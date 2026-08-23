@@ -1,5 +1,3 @@
 # TrueStore 
 
----
-
 build in progress
