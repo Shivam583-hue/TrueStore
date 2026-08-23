@@ -62,15 +62,17 @@ void Server::run() {
   // std::cout << "Client connected\n";
 
   char buffer[1024] = {0};
-  ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-  if (bytes_received > 0) {
-    // std::cout << "Client says: " << buffer << "\n";
-    std::cout << buffer << "\n";
-  }
+  while (1) {
+    ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_received > 0) {
+      // std::cout << "Client says: " << buffer << "\n";
+      std::cout << buffer << "\n";
+    } else
+      break;
 
-  const char *response = "PONG";
-  // const char *response = "Hello Client, message received successfully!";
-  send(client_fd, response, std::strlen(response), 0);
+    const char *response = "+PONG\r\n";
+    send(client_fd, response, std::strlen(response), 0);
+  }
 
   close(client_fd);
 }
