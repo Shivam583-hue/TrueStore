@@ -1,4 +1,4 @@
-#include "server/server.hpp"
+#include "client/client.hpp"
 
 #include <iostream>
 
@@ -6,12 +6,12 @@ int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  Server server(6379);
-  if (!server.start()) {
+  Client client(6379);
+  if (!client.start()) {
     return 1;
   }
 
-  server.run();
+  client.run();
 
   return 0;
 }
