@@ -40,8 +40,7 @@ bool Client::start() {
 }
 
 void Client::run() {
-  // const char *message = "Hello Server, this is the Client!";
-  const char *message = "PING";
+  const char *message = "*1\r\n$4\r\nPING\r\n";
   send(client_fd_, message, std::strlen(message), 0);
 
   char buffer[1024] = {0};

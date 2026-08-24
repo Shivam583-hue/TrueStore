@@ -1,12 +1,50 @@
 #include "server.hpp"
+#include "resp/resp.hpp"
 
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <unordered_map>
 #include <unistd.h>
+
+namespace {
+
+std::string to_upper(std::string value) {
+  for (char &c : value) {
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  }
+  return value;
+}
+
+std::string handle_command(const std::vector<std::string> &args) {
+  if (args.empty()) {
+    return RespType::SimpleError("ERR empty command").to_bytes();
+  }
+
+  std::string command = to_upper(args[0]);
+
+  if (command == "PING") {
+    return RespType::SimpleString("PONG").to_bytes();
+  }
+
+  if (command == "ECHO") {
+    if (args.size() != 2) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'echo' command")
+          .to_bytes();
+    }
+    return RespType::BulkString(args[1]).to_bytes();
+  }
+
+  return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
+      .to_bytes();
+}
+
+} // namespace
 
 Server::Server(int port) : port_(port), server_fd_(-1) {}
 
@@ -66,6 +104,8 @@ void Server::run() {
   int nfds = 1;
   int timeout = 3 * 60 * 1000;
 
+  std::unordered_map<int, std::string> buffers;
+
   while (true) {
     int ready = poll(fds, nfds, timeout);
 
@@ -122,9 +162,6 @@ void Server::run() {
               continue;
             }
 
-            // TODO:clean up if necessary, place holder code for debugging.
-            // std::cout << "New connection: " << client_fd << '\n';
-
             fds[nfds].fd = client_fd;
             fds[nfds].events = POLLIN;
             ++nfds;
@@ -132,35 +169,55 @@ void Server::run() {
         }
 
         else {
-          while (true) {
-            char buffer[80];
+          bool connection_closed = false;
 
-            ssize_t bytes = recv(fd, buffer, sizeof(buffer), 0);
+          while (!connection_closed) {
+            char chunk[4096];
+
+            ssize_t bytes = recv(fd, chunk, sizeof(chunk), 0);
 
             if (bytes > 0) {
-              // TODO: debugging code
-              // std::cout << "Bytes received: " << bytes << '\n';
-              //
-              // std::cout.write(buffer, bytes);
-              // std::cout << '\n';
+              buffers[fd].append(chunk, static_cast<std::size_t>(bytes));
 
-              const char *response = "+PONG\r\n";
-              // ssize_t sent = send(fd, response, strlen(response), 0);
-              ssize_t sent = send(fd, response, std::strlen(response), 0);
+              while (true) {
+                std::optional<std::pair<std::vector<std::string>, std::size_t>>
+                    command;
 
-              if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                std::cerr << "send() failed\n";
+                try {
+                  command = parse_command(buffers[fd]);
+                } catch (const RespError &e) {
+                  std::cerr << "Protocol error: " << e.what() << '\n';
+                  close(fd);
+                  fds[i].fd = -1;
+                  buffers.erase(fd);
+                  connection_closed = true;
+                  break;
+                }
+
+                if (!command) {
+                  break;
+                }
+
+                auto &[args, consumed] = *command;
+
+                std::string response = handle_command(args);
+
+                ssize_t sent = send(fd, response.data(), response.size(), 0);
+
+                if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                  std::cerr << "send() failed\n";
+                }
+
+                buffers[fd].erase(0, consumed);
               }
             }
 
             else if (bytes == 0) {
 
-              // TODO: debugging code
-              // std::cout << "Client disconnected\n";
-
               close(fd);
               fds[i].fd = -1;
-              break;
+              buffers.erase(fd);
+              connection_closed = true;
             }
 
             else {
@@ -175,7 +232,8 @@ void Server::run() {
 
               close(fd);
               fds[i].fd = -1;
-              break;
+              buffers.erase(fd);
+              connection_closed = true;
             }
           }
         }
@@ -186,6 +244,7 @@ void Server::run() {
         if (fd != server_fd_ && fds[i].fd >= 0) {
           close(fd);
           fds[i].fd = -1;
+          buffers.erase(fd);
         }
       }
     }

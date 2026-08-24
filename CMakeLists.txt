@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 add_executable(server
   src/main.cpp
   src/server/server.cpp
+  src/resp/resp.cpp
 )
 target_include_directories(server PRIVATE src)
 target_link_libraries(server PRIVATE Threads::Threads)
