@@ -15,6 +15,8 @@ RespType RespType::SimpleError(std::string value) {
   return {Type::SimpleError, std::move(value)};
 }
 
+RespType RespType::NullBulkString() { return {Type::NullBulkString, ""}; }
+
 std::string RespType::to_bytes() const {
   switch (type) {
 
@@ -26,6 +28,9 @@ std::string RespType::to_bytes() const {
 
   case Type::SimpleError:
     return "-" + value + "\r\n";
+
+  case Type::NullBulkString:
+    return "$-1\r\n";
   }
 
   throw RespError("Unknown RESP type");
