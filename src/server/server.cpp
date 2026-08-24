@@ -4,15 +4,15 @@
 #include <cctype>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
-#include <unordered_map>
 #include <unistd.h>
+#include <unordered_map>
 
 namespace {
-
 std::string to_upper(std::string value) {
   for (char &c : value) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -20,7 +20,10 @@ std::string to_upper(std::string value) {
   return value;
 }
 
+std::map<std::string, std::string> gStorage;
+
 std::string handle_command(const std::vector<std::string> &args) {
+
   if (args.empty()) {
     return RespType::SimpleError("ERR empty command").to_bytes();
   }
@@ -38,6 +41,24 @@ std::string handle_command(const std::vector<std::string> &args) {
           .to_bytes();
     }
     return RespType::BulkString(args[1]).to_bytes();
+  }
+
+  if (command == "SET") {
+    if (args.size() != 3) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'set' command")
+          .to_bytes();
+    }
+    gStorage[args[1]] = args[2];
+    return RespType::SimpleString("OK").to_bytes();
+  }
+  if (command == "GET") {
+    if (args.size() != 2) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'get' command")
+          .to_bytes();
+    }
+    return RespType::BulkString(gStorage[args[1]]).to_bytes();
   }
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
