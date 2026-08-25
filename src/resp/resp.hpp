@@ -13,7 +13,13 @@ public:
 };
 
 struct RespType {
-  enum class Type { SimpleString, BulkString, SimpleError, NullBulkString };
+  enum class Type {
+    SimpleString,
+    BulkString,
+    SimpleError,
+    NullBulkString,
+    Integer
+  };
 
   Type type;
   std::string value;
@@ -22,6 +28,7 @@ struct RespType {
   static RespType BulkString(std::string value);
   static RespType SimpleError(std::string value);
   static RespType NullBulkString();
+  static RespType Integer(long long value);
 
   std::string to_bytes() const;
 };
