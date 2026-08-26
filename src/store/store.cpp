@@ -90,6 +90,7 @@ std::string Store::handle_get(const std::vector<std::string> &args) {
 
 std::string Store::handle_rpush(const std::vector<std::string> &args) {
   const std::string &vec_name = args[1];
-  DynamicVector[vec_name].push_back(args[2]);
+  for (int i = 2; i < args.size(); i++)
+    DynamicVector[vec_name].push_back(args[i]);
   return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
 }
