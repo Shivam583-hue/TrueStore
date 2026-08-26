@@ -1,7 +1,7 @@
+#include "store/store.hpp"
 #include "resp/resp.hpp"
-#include <store/store.hpp>
 
-std::string Store::handleSet(const std::vector<std::string> &args) {
+std::string Store::handle_set(const std::vector<std::string> &args) {
   if (args.size() != 3 && args.size() != 5) {
     return RespType::SimpleError(
                "ERR wrong number of arguments for 'set' command")
@@ -11,10 +11,10 @@ std::string Store::handleSet(const std::vector<std::string> &args) {
   const std::string &key = args[1];
   const std::string &value = args[2];
 
-  gStorage[key] = value;
+  Storage[key] = value;
 
   if (args.size() == 3) {
-    gExpirations.erase(key);
+    Expirations.erase(key);
 
     return RespType::SimpleString("OK").to_bytes();
   }
@@ -38,10 +38,10 @@ std::string Store::handleSet(const std::vector<std::string> &args) {
   const auto now = std::chrono::steady_clock::now();
 
   if (option == "EX") {
-    gExpirations[key] = now + std::chrono::seconds(duration);
+    Expirations[key] = now + std::chrono::seconds(duration);
 
   } else if (option == "PX") {
-    gExpirations[key] = now + std::chrono::milliseconds(duration);
+    Expirations[key] = now + std::chrono::milliseconds(duration);
 
   } else {
     return RespType::SimpleError("ERR syntax error").to_bytes();
@@ -50,23 +50,23 @@ std::string Store::handleSet(const std::vector<std::string> &args) {
   return RespType::SimpleString("OK").to_bytes();
 }
 
-bool Store::isExpired(const std::string &key) {
-  auto it = gExpirations.find(key);
+bool Store::is_expired(const std::string &key) {
+  auto it = Expirations.find(key);
 
-  if (it == gExpirations.end()) {
+  if (it == Expirations.end()) {
     return false;
   }
 
   if (std::chrono::steady_clock::now() >= it->second) {
-    gExpirations.erase(it);
-    gStorage.erase(key);
+    Expirations.erase(it);
+    Storage.erase(key);
     return true;
   }
 
   return false;
 }
 
-std::string Store::handleGet(const std::vector<std::string> &args) {
+std::string Store::handle_get(const std::vector<std::string> &args) {
   if (args.size() != 2) {
     return RespType::SimpleError(
                "ERR wrong number of arguments for 'get' command")
@@ -75,21 +75,21 @@ std::string Store::handleGet(const std::vector<std::string> &args) {
 
   const std::string &key = args[1];
 
-  if (isExpired(key)) {
+  if (is_expired(key)) {
     return RespType::NullBulkString().to_bytes();
   }
 
-  auto it = gStorage.find(key);
+  auto it = Storage.find(key);
 
-  if (it == gStorage.end()) {
+  if (it == Storage.end()) {
     return RespType::NullBulkString().to_bytes();
   }
 
   return RespType::BulkString(it->second).to_bytes();
 }
 
-std::string Store::handleRPUSH(const std::vector<std::string> &args) {
-  std::string vec_name = args[1];
-  dynamicVector[vec_name].push_back(args[2]);
-  return RespType::Integer(dynamicVector[vec_name].size()).to_bytes();
+std::string Store::handle_rpush(const std::vector<std::string> &args) {
+  const std::string &vec_name = args[1];
+  DynamicVector[vec_name].push_back(args[2]);
+  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
 }

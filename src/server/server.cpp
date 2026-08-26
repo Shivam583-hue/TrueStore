@@ -1,12 +1,9 @@
 #include "server.hpp"
+#include "command/command.hpp"
 #include "resp/resp.hpp"
-#include "store/store.hpp"
 
-#include <cctype>
-#include <chrono>
 #include <cstring>
 #include <iostream>
-#include <map>
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
@@ -14,52 +11,8 @@
 #include <unistd.h>
 #include <unordered_map>
 
-Store store;
 namespace {
-std::string to_upper(std::string value) {
-  for (char &c : value) {
-    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  }
-  return value;
-}
-
-std::string handle_command(const std::vector<std::string> &args) {
-
-  if (args.empty()) {
-    return RespType::SimpleError("ERR empty command").to_bytes();
-  }
-
-  std::string command = to_upper(args[0]);
-
-  if (command == "PING") {
-    return RespType::SimpleString("PONG").to_bytes();
-  }
-
-  if (command == "ECHO") {
-    if (args.size() != 2) {
-      return RespType::SimpleError(
-                 "ERR wrong number of arguments for 'echo' command")
-          .to_bytes();
-    }
-    return RespType::BulkString(args[1]).to_bytes();
-  }
-
-  if (command == "SET") {
-    return store.handleSet(args);
-  }
-
-  if (command == "GET") {
-    return store.handleGet(args);
-  }
-
-  if (command == "RPUSH") {
-    return store.handleRPUSH(args);
-  }
-
-  return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
-      .to_bytes();
-}
-
+Store store;
 } // namespace
 
 Server::Server(int port) : port_(port), server_fd_(-1) {}
@@ -216,7 +169,7 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
-                std::string response = handle_command(args);
+                std::string response = handle_command(args, store);
 
                 ssize_t sent = send(fd, response.data(), response.size(), 0);
 
