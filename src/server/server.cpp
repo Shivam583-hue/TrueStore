@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "resp/resp.hpp"
+#include "store/store.hpp"
 
 #include <cctype>
 #include <chrono>
@@ -7,40 +8,19 @@
 #include <iostream>
 #include <map>
 #include <netinet/in.h>
-#include <store/store.hpp>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_map>
 
+Store store;
 namespace {
 std::string to_upper(std::string value) {
   for (char &c : value) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   }
   return value;
-}
-
-// std::map<std::string, std::string> gStorage;
-// std::map<std::string, std::chrono::steady_clock::time_point> gExpirations;
-// std::unordered_map<std::string, std::vector<std::string>> dynamicVector;
-Store store;
-
-bool isExpired(const std::string &key) {
-  auto it = store.gExpirations.find(key);
-
-  if (it == store.gExpirations.end()) {
-    return false;
-  }
-
-  if (std::chrono::steady_clock::now() >= it->second) {
-    store.gExpirations.erase(it);
-    store.gStorage.erase(key);
-    return true;
-  }
-
-  return false;
 }
 
 std::string handle_command(const std::vector<std::string> &args) {
@@ -65,80 +45,15 @@ std::string handle_command(const std::vector<std::string> &args) {
   }
 
   if (command == "SET") {
-    if (args.size() != 3 && args.size() != 5) {
-      return RespType::SimpleError(
-                 "ERR wrong number of arguments for 'set' command")
-          .to_bytes();
-    }
-
-    const std::string &key = args[1];
-    const std::string &value = args[2];
-
-    store.gStorage[key] = value;
-
-    if (args.size() == 3) {
-      store.gExpirations.erase(key);
-
-      return RespType::SimpleString("OK").to_bytes();
-    }
-
-    const std::string &option = args[3];
-
-    long long duration;
-
-    try {
-      duration = std::stoll(args[4]);
-    } catch (...) {
-      return RespType::SimpleError("ERR invalid expire time in 'set' command")
-          .to_bytes();
-    }
-
-    if (duration <= 0) {
-      return RespType::SimpleError("ERR invalid expire time in 'set' command")
-          .to_bytes();
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-
-    if (option == "EX") {
-      store.gExpirations[key] = now + std::chrono::seconds(duration);
-
-    } else if (option == "PX") {
-      store.gExpirations[key] = now + std::chrono::milliseconds(duration);
-
-    } else {
-      return RespType::SimpleError("ERR syntax error").to_bytes();
-    }
-
-    return RespType::SimpleString("OK").to_bytes();
+    return store.handleSet(args);
   }
 
   if (command == "GET") {
-    if (args.size() != 2) {
-      return RespType::SimpleError(
-                 "ERR wrong number of arguments for 'get' command")
-          .to_bytes();
-    }
-
-    const std::string &key = args[1];
-
-    if (isExpired(key)) {
-      return RespType::NullBulkString().to_bytes();
-    }
-
-    auto it = store.gStorage.find(key);
-
-    if (it == store.gStorage.end()) {
-      return RespType::NullBulkString().to_bytes();
-    }
-
-    return RespType::BulkString(it->second).to_bytes();
+    return store.handleGet(args);
   }
 
   if (command == "RPUSH") {
-    std::string vec_name = args[1];
-    store.dynamicVector[vec_name].push_back(args[2]);
-    return RespType::Integer(store.dynamicVector[vec_name].size()).to_bytes();
+    return store.handleRPUSH(args);
   }
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
