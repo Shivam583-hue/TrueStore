@@ -4,14 +4,13 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
-#include <future>
 #include <iostream>
 #include <map>
 #include <netinet/in.h>
+#include <store/store.hpp>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
-#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -23,20 +22,21 @@ std::string to_upper(std::string value) {
   return value;
 }
 
-std::map<std::string, std::string> gStorage;
-std::map<std::string, std::chrono::steady_clock::time_point> gExpirations;
-std::unordered_map<std::string, std::vector<std::string>> dynamicVector;
+// std::map<std::string, std::string> gStorage;
+// std::map<std::string, std::chrono::steady_clock::time_point> gExpirations;
+// std::unordered_map<std::string, std::vector<std::string>> dynamicVector;
+Store store;
 
 bool isExpired(const std::string &key) {
-  auto it = gExpirations.find(key);
+  auto it = store.gExpirations.find(key);
 
-  if (it == gExpirations.end()) {
+  if (it == store.gExpirations.end()) {
     return false;
   }
 
   if (std::chrono::steady_clock::now() >= it->second) {
-    gExpirations.erase(it);
-    gStorage.erase(key);
+    store.gExpirations.erase(it);
+    store.gStorage.erase(key);
     return true;
   }
 
@@ -74,10 +74,10 @@ std::string handle_command(const std::vector<std::string> &args) {
     const std::string &key = args[1];
     const std::string &value = args[2];
 
-    gStorage[key] = value;
+    store.gStorage[key] = value;
 
     if (args.size() == 3) {
-      gExpirations.erase(key);
+      store.gExpirations.erase(key);
 
       return RespType::SimpleString("OK").to_bytes();
     }
@@ -101,10 +101,10 @@ std::string handle_command(const std::vector<std::string> &args) {
     const auto now = std::chrono::steady_clock::now();
 
     if (option == "EX") {
-      gExpirations[key] = now + std::chrono::seconds(duration);
+      store.gExpirations[key] = now + std::chrono::seconds(duration);
 
     } else if (option == "PX") {
-      gExpirations[key] = now + std::chrono::milliseconds(duration);
+      store.gExpirations[key] = now + std::chrono::milliseconds(duration);
 
     } else {
       return RespType::SimpleError("ERR syntax error").to_bytes();
@@ -126,9 +126,9 @@ std::string handle_command(const std::vector<std::string> &args) {
       return RespType::NullBulkString().to_bytes();
     }
 
-    auto it = gStorage.find(key);
+    auto it = store.gStorage.find(key);
 
-    if (it == gStorage.end()) {
+    if (it == store.gStorage.end()) {
       return RespType::NullBulkString().to_bytes();
     }
 
@@ -137,8 +137,8 @@ std::string handle_command(const std::vector<std::string> &args) {
 
   if (command == "RPUSH") {
     std::string vec_name = args[1];
-    dynamicVector[vec_name].push_back(args[2]);
-    return RespType::Integer(dynamicVector[vec_name].size()).to_bytes();
+    store.dynamicVector[vec_name].push_back(args[2]);
+    return RespType::Integer(store.dynamicVector[vec_name].size()).to_bytes();
   }
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
