@@ -18,17 +18,20 @@ struct RespType {
     BulkString,
     SimpleError,
     NullBulkString,
-    Integer
+    Integer,
+    Array
   };
 
   Type type;
   std::string value;
+  std::vector<std::string> elements;
 
   static RespType SimpleString(std::string value);
   static RespType BulkString(std::string value);
   static RespType SimpleError(std::string value);
   static RespType NullBulkString();
   static RespType Integer(long long value);
+  static RespType Array(std::vector<std::string> elements);
 
   std::string to_bytes() const;
 };

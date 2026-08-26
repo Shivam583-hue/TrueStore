@@ -94,3 +94,49 @@ std::string Store::handle_rpush(const std::vector<std::string> &args) {
     DynamicVector[vec_name].push_back(args[i]);
   return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
 }
+
+std::string Store::handle_lrange(const std::vector<std::string> &args) {
+  if (args.size() != 4) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'lrange' command")
+        .to_bytes();
+  }
+
+  const std::string &key = args[1];
+
+  long long start;
+  long long stop;
+
+  try {
+    start = std::stoll(args[2]);
+    stop = std::stoll(args[3]);
+  } catch (...) {
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  }
+
+  auto it = DynamicVector.find(key);
+
+  if (it == DynamicVector.end()) {
+    return RespType::Array({}).to_bytes();
+  }
+
+  const std::vector<std::string> &list = it->second;
+  long long size = static_cast<long long>(list.size());
+
+  if (start < 0) {
+    start = 0;
+  }
+
+  if (start >= size || start > stop) {
+    return RespType::Array({}).to_bytes();
+  }
+
+  if (stop >= size) {
+    stop = size - 1;
+  }
+
+  std::vector<std::string> range(list.begin() + start, list.begin() + stop + 1);
+
+  return RespType::Array(std::move(range)).to_bytes();
+}

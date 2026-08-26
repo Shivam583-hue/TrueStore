@@ -4,21 +4,28 @@ RespError::RespError(const std::string &message)
     : std::runtime_error(message) {}
 
 RespType RespType::SimpleString(std::string value) {
-  return {Type::SimpleString, std::move(value)};
+  return {Type::SimpleString, std::move(value), {}};
 }
 
 RespType RespType::BulkString(std::string value) {
-  return {Type::BulkString, std::move(value)};
+  return {Type::BulkString, std::move(value), {}};
 }
 
 RespType RespType::SimpleError(std::string value) {
-  return {Type::SimpleError, std::move(value)};
+  return {Type::SimpleError, std::move(value), {}};
 }
 
-RespType RespType::NullBulkString() { return {Type::NullBulkString, ""}; }
+RespType RespType::NullBulkString() { return {Type::NullBulkString, "", {}}; }
 
 RespType RespType::Integer(long long value) {
-  return {Type::Integer, std::to_string(value)};
+  return {Type::Integer, std::to_string(value), {}};
+}
+
+RespType RespType::Array(std::vector<std::string> elements) {
+  RespType resp;
+  resp.type = Type::Array;
+  resp.elements = std::move(elements);
+  return resp;
 }
 
 std::string RespType::to_bytes() const {
@@ -38,6 +45,16 @@ std::string RespType::to_bytes() const {
 
   case Type::Integer:
     return ":" + value + "\r\n";
+
+  case Type::Array: {
+    std::string bytes = "*" + std::to_string(elements.size()) + "\r\n";
+
+    for (const auto &element : elements) {
+      bytes += BulkString(element).to_bytes();
+    }
+
+    return bytes;
+  }
   }
 
   throw RespError("Unknown RESP type");
