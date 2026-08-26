@@ -25,6 +25,7 @@ std::string to_upper(std::string value) {
 
 std::map<std::string, std::string> gStorage;
 std::map<std::string, std::chrono::steady_clock::time_point> gExpirations;
+std::unordered_map<std::string, std::vector<std::string>> dynamicVector;
 
 bool isExpired(const std::string &key) {
   auto it = gExpirations.find(key);
@@ -132,6 +133,12 @@ std::string handle_command(const std::vector<std::string> &args) {
     }
 
     return RespType::BulkString(it->second).to_bytes();
+  }
+
+  if (command == "RPUSH") {
+    std::string vec_name = args[1];
+    dynamicVector[vec_name].push_back(args[2]);
+    return RespType::Integer(dynamicVector[vec_name].size()).to_bytes();
   }
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
