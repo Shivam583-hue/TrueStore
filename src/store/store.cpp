@@ -125,7 +125,17 @@ std::string Store::handle_lrange(const std::vector<std::string> &args) {
   long long size = static_cast<long long>(list.size());
 
   if (start < 0) {
+    start += size;
+  }
+  if (start < 0) {
     start = 0;
+  }
+
+  if (stop < 0) {
+    stop += size;
+  }
+  if (stop < 0) {
+    stop = 0;
   }
 
   if (start >= size || start > stop) {
