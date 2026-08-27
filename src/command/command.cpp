@@ -31,21 +31,26 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
     return RespType::BulkString(args[1]).to_bytes();
   }
 
-  if (command == "SET") {
+  if (command == "SET")
     return store.handle_set(args);
-  }
 
-  if (command == "GET") {
+  if (command == "GET")
     return store.handle_get(args);
-  }
 
-  if (command == "RPUSH") {
+  if (command == "RPUSH")
     return store.handle_rpush(args);
-  }
 
-  if (command == "LRANGE") {
+  if (command == "LRANGE")
     return store.handle_lrange(args);
-  }
+
+  if (command == "LPUSH")
+    return store.handle_lpush(args);
+
+  if (command == "LLEN")
+    return store.handle_llen(args);
+
+  if (command == "LPOP")
+    return store.handle_lpop(args);
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();

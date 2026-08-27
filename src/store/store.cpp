@@ -95,6 +95,29 @@ std::string Store::handle_rpush(const std::vector<std::string> &args) {
   return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
 }
 
+std::string Store::handle_llen(const std::vector<std::string> &args) {
+  const std::string &vec_name = args[1];
+  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
+}
+
+std::string Store::handle_lpush(const std::vector<std::string> &args) {
+  const std::string &vec_name = args[1];
+  for (int i = 2; i < args.size(); i++)
+    DynamicVector[vec_name].insert(DynamicVector[vec_name].begin(), args[i]);
+  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
+}
+
+std::string Store::handle_lpop(const std::vector<std::string> &args) {
+  const std::string &vec_name = args[1];
+  if (!(DynamicVector.find(vec_name) != DynamicVector.end()))
+    return RespType::NullBulkString().to_bytes();
+  auto b = DynamicVector[vec_name];
+  auto first_element = b[0];
+  b.erase(b.begin());
+  DynamicVector[vec_name] = b;
+  return RespType::BulkString(first_element).to_bytes();
+}
+
 std::string Store::handle_lrange(const std::vector<std::string> &args) {
   if (args.size() != 4) {
     return RespType::SimpleError(
