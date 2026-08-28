@@ -108,14 +108,24 @@ std::string Store::handle_lpush(const std::vector<std::string> &args) {
 }
 
 std::string Store::handle_lpop(const std::vector<std::string> &args) {
+
   const std::string &vec_name = args[1];
+
   if (!(DynamicVector.find(vec_name) != DynamicVector.end()))
     return RespType::NullBulkString().to_bytes();
-  auto b = DynamicVector[vec_name];
-  auto first_element = b[0];
-  b.erase(b.begin());
-  DynamicVector[vec_name] = b;
-  return RespType::BulkString(first_element).to_bytes();
+
+  auto number_of_elements_to_remove = args[3];
+  auto number_of_ele = stoi(number_of_elements_to_remove);
+
+  std::vector<std::string> elements_removed{};
+  while (number_of_ele--) {
+    auto b = DynamicVector[vec_name];
+    auto first_element = b[0];
+    b.erase(b.begin());
+    DynamicVector[vec_name] = b;
+    elements_removed.push_back(first_element);
+  }
+  return RespType::Array(elements_removed).to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

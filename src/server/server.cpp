@@ -169,7 +169,15 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
-                std::string response = handle_command(args, store);
+                std::string response;
+
+                try {
+                  response = handle_command(args, store);
+                } catch (const std::exception &e) {
+                  std::cerr << "Command error: " << e.what() << '\n';
+                  response =
+                      RespType::SimpleError("ERR internal error").to_bytes();
+                }
 
                 ssize_t sent = send(fd, response.data(), response.size(), 0);
 
