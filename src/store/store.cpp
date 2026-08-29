@@ -1,6 +1,8 @@
 #include "store/store.hpp"
 #include "resp/resp.hpp"
 
+#include <cmath>
+
 std::string Store::handle_set(const std::vector<std::string> &args) {
   if (args.size() != 3 && args.size() != 5) {
     return RespType::SimpleError(
@@ -126,6 +128,64 @@ std::string Store::handle_lpop(const std::vector<std::string> &args) {
     elements_removed.push_back(first_element);
   }
   return RespType::Array(elements_removed).to_bytes();
+}
+
+std::optional<std::pair<std::string, std::string>>
+Store::try_blpop(const std::vector<std::string> &keys) {
+  for (const std::string &key : keys) {
+    auto it = DynamicVector.find(key);
+
+    if (it == DynamicVector.end() || it->second.empty()) {
+      continue;
+    }
+
+    std::string value = std::move(it->second.front());
+    it->second.erase(it->second.begin());
+
+    if (it->second.empty()) {
+      DynamicVector.erase(it);
+    }
+
+    return std::make_pair(key, std::move(value));
+  }
+
+  return std::nullopt;
+}
+
+std::string Store::handle_blpop(const std::vector<std::string> &args) {
+  if (args.size() < 3) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'blpop' command")
+        .to_bytes();
+  }
+
+  double timeout;
+
+  try {
+    std::size_t consumed;
+    timeout = std::stod(args.back(), &consumed);
+
+    if (consumed != args.back().size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+  } catch (...) {
+    return RespType::SimpleError("ERR timeout is not a float or out of range")
+        .to_bytes();
+  }
+
+  if (std::isnan(timeout) || timeout < 0) {
+    return RespType::SimpleError("ERR timeout is negative").to_bytes();
+  }
+
+  const std::vector<std::string> keys(args.begin() + 1, args.end() - 1);
+
+  auto popped = try_blpop(keys);
+
+  if (popped) {
+    return RespType::Array({popped->first, popped->second}).to_bytes();
+  }
+
+  return {};
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

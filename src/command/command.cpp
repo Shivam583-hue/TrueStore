@@ -52,6 +52,9 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "LPOP")
     return store.handle_lpop(args);
 
+  if (command == "BLPOP")
+    return store.handle_blpop(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }
