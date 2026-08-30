@@ -1,18 +1,69 @@
 #include "server.hpp"
 #include "command/command.hpp"
 #include "resp/resp.hpp"
+#include "store/store.hpp"
 
+#include <algorithm>
+#include <cerrno>
+#include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <optional>
+#include <string>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 Store store;
+
+// A client parked on BLPOP, waiting for one of `keys` to receive a value.
+struct Waiter {
+  int fd;
+  std::vector<std::string> keys;
+  bool has_deadline;
+  std::chrono::steady_clock::time_point deadline;
+};
+
+bool send_all(int fd, const std::string &payload) {
+  std::size_t offset = 0;
+
+  while (offset < payload.size()) {
+    ssize_t sent =
+        send(fd, payload.data() + offset, payload.size() - offset, 0);
+
+    if (sent > 0) {
+      offset += static_cast<std::size_t>(sent);
+      continue;
+    }
+
+    if (sent < 0 && errno == EINTR) {
+      continue;
+    }
+
+    if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      pollfd writable{};
+      writable.fd = fd;
+      writable.events = POLLOUT;
+
+      if (poll(&writable, 1, 1000) <= 0) {
+        return false;
+      }
+
+      continue;
+    }
+
+    std::cerr << "send() failed\n";
+    return false;
+  }
+
+  return true;
+}
 } // namespace
 
 Server::Server(int port) : port_(port), server_fd_(-1) {}
@@ -71,23 +122,83 @@ void Server::run() {
   fds[0].events = POLLIN;
 
   int nfds = 1;
-  int timeout = 3 * 60 * 1000;
 
   std::unordered_map<int, std::string> buffers;
 
+  // Oldest first, so a pushed value goes to the longest-waiting client.
+  std::vector<Waiter> waiters;
+
+  auto close_client = [&](int index, int fd) {
+    close(fd);
+    fds[index].fd = -1;
+    buffers.erase(fd);
+    waiters.erase(std::remove_if(waiters.begin(), waiters.end(),
+                                 [fd](const Waiter &w) { return w.fd == fd; }),
+                  waiters.end());
+  };
+
+  auto serve_waiters = [&]() {
+    for (std::size_t i = 0; i < waiters.size();) {
+      auto popped = store.try_blpop(waiters[i].keys);
+
+      if (!popped) {
+        ++i;
+        continue;
+      }
+
+      send_all(waiters[i].fd,
+               RespType::Array({popped->first, popped->second}).to_bytes());
+      waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+  };
+
+  auto expire_waiters = [&]() {
+    const auto now = std::chrono::steady_clock::now();
+
+    for (std::size_t i = 0; i < waiters.size();) {
+      if (waiters[i].has_deadline && now >= waiters[i].deadline) {
+        send_all(waiters[i].fd, RespType::NullArray().to_bytes());
+        waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
+      } else {
+        ++i;
+      }
+    }
+  };
+
+  // Sleep until the earliest BLPOP deadline, or indefinitely if nobody waits.
+  auto next_timeout = [&]() {
+    const auto now = std::chrono::steady_clock::now();
+    int timeout = -1;
+
+    for (const Waiter &waiter : waiters) {
+      if (!waiter.has_deadline) {
+        continue;
+      }
+
+      auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           waiter.deadline - now)
+                           .count();
+
+      if (remaining < 0) {
+        remaining = 0;
+      }
+
+      if (timeout < 0 || remaining < timeout) {
+        timeout = static_cast<int>(remaining);
+      }
+    }
+
+    return timeout;
+  };
+
   while (true) {
-    int ready = poll(fds, nfds, timeout);
+    int ready = poll(fds, nfds, next_timeout());
 
     if (ready < 0) {
       if (errno == EINTR)
         continue;
 
       std::cerr << "poll() failed\n";
-      break;
-    }
-
-    if (ready == 0) {
-      std::cout << "poll() timed out\n";
       break;
     }
 
@@ -156,9 +267,7 @@ void Server::run() {
                   command = parse_command(buffers[fd]);
                 } catch (const RespError &e) {
                   std::cerr << "Protocol error: " << e.what() << '\n';
-                  close(fd);
-                  fds[i].fd = -1;
-                  buffers.erase(fd);
+                  close_client(i, fd);
                   connection_closed = true;
                   break;
                 }
@@ -179,21 +288,34 @@ void Server::run() {
                       RespType::SimpleError("ERR internal error").to_bytes();
                 }
 
-                ssize_t sent = send(fd, response.data(), response.size(), 0);
-
-                if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                  std::cerr << "send() failed\n";
-                }
-
                 buffers[fd].erase(0, consumed);
+
+                // A BLPOP with nothing to pop parks the client rather than
+                // replying; it is answered by serve_waiters/expire_waiters.
+                if (auto block = store.take_pending_block()) {
+                  Waiter waiter;
+                  waiter.fd = fd;
+                  waiter.keys = std::move(block->keys);
+                  waiter.has_deadline = block->timeout > 0;
+
+                  if (waiter.has_deadline) {
+                    waiter.deadline =
+                        std::chrono::steady_clock::now() +
+                        std::chrono::duration_cast<
+                            std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(block->timeout));
+                  }
+
+                  waiters.push_back(std::move(waiter));
+                } else if (!response.empty()) {
+                  send_all(fd, response);
+                }
               }
             }
 
             else if (bytes == 0) {
 
-              close(fd);
-              fds[i].fd = -1;
-              buffers.erase(fd);
+              close_client(i, fd);
               connection_closed = true;
             }
 
@@ -207,9 +329,7 @@ void Server::run() {
 
               std::cerr << "recv() failed\n";
 
-              close(fd);
-              fds[i].fd = -1;
-              buffers.erase(fd);
+              close_client(i, fd);
               connection_closed = true;
             }
           }
@@ -219,12 +339,14 @@ void Server::run() {
       if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
 
         if (fd != server_fd_ && fds[i].fd >= 0) {
-          close(fd);
-          fds[i].fd = -1;
-          buffers.erase(fd);
+          close_client(i, fd);
         }
       }
     }
+
+    // Values pushed during this cycle may unblock parked clients.
+    serve_waiters();
+    expire_waiters();
 
     for (int i = 1; i < nfds;) {
       if (fds[i].fd == -1) {

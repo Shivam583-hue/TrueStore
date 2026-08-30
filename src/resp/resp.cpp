@@ -28,6 +28,8 @@ RespType RespType::Array(std::vector<std::string> elements) {
   return resp;
 }
 
+RespType RespType::NullArray() { return {Type::NullArray, "", {}}; }
+
 std::string RespType::to_bytes() const {
   switch (type) {
 
@@ -42,6 +44,9 @@ std::string RespType::to_bytes() const {
 
   case Type::NullBulkString:
     return "$-1\r\n";
+
+  case Type::NullArray:
+    return "*-1\r\n";
 
   case Type::Integer:
     return ":" + value + "\r\n";
@@ -129,7 +134,7 @@ parse_bulk_string(const std::string &buffer) {
   std::string bulkstr = buffer.substr(bytes_consumed, bulkstr_len);
 
   return std::make_pair(RespType::BulkString(std::move(bulkstr)),
-                         bulkstr_end_idx + 2);
+                        bulkstr_end_idx + 2);
 }
 
 std::optional<std::pair<std::vector<std::string>, std::size_t>>

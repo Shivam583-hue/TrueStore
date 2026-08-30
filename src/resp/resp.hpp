@@ -19,7 +19,8 @@ struct RespType {
     SimpleError,
     NullBulkString,
     Integer,
-    Array
+    Array,
+    NullArray
   };
 
   Type type;
@@ -32,6 +33,7 @@ struct RespType {
   static RespType NullBulkString();
   static RespType Integer(long long value);
   static RespType Array(std::vector<std::string> elements);
+  static RespType NullArray();
 
   std::string to_bytes() const;
 };
@@ -41,8 +43,7 @@ read_till_crlf(const std::string &buffer);
 
 std::size_t parse_usize_from_buf(const std::string &buffer);
 
-std::pair<RespType, std::size_t>
-parse_simple_string(const std::string &buffer);
+std::pair<RespType, std::size_t> parse_simple_string(const std::string &buffer);
 
 std::optional<std::pair<RespType, std::size_t>>
 parse_bulk_string(const std::string &buffer);

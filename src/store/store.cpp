@@ -1,7 +1,9 @@
 #include "store/store.hpp"
 #include "resp/resp.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 
 std::string Store::handle_set(const std::vector<std::string> &args) {
   if (args.size() != 3 && args.size() != 5) {
@@ -91,43 +93,121 @@ std::string Store::handle_get(const std::vector<std::string> &args) {
 }
 
 std::string Store::handle_rpush(const std::vector<std::string> &args) {
+  if (args.size() < 3) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'rpush' command")
+        .to_bytes();
+  }
+
   const std::string &vec_name = args[1];
-  for (int i = 2; i < args.size(); i++)
-    DynamicVector[vec_name].push_back(args[i]);
-  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
+  std::vector<std::string> &list = DynamicVector[vec_name];
+
+  for (std::size_t i = 2; i < args.size(); ++i) {
+    list.push_back(args[i]);
+  }
+
+  return RespType::Integer(static_cast<long long>(list.size())).to_bytes();
 }
 
 std::string Store::handle_llen(const std::vector<std::string> &args) {
-  const std::string &vec_name = args[1];
-  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
+  if (args.size() != 2) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'llen' command")
+        .to_bytes();
+  }
+
+  auto it = DynamicVector.find(args[1]);
+
+  if (it == DynamicVector.end()) {
+    return RespType::Integer(0).to_bytes();
+  }
+
+  return RespType::Integer(static_cast<long long>(it->second.size()))
+      .to_bytes();
 }
 
 std::string Store::handle_lpush(const std::vector<std::string> &args) {
+  if (args.size() < 3) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'lpush' command")
+        .to_bytes();
+  }
+
   const std::string &vec_name = args[1];
-  for (int i = 2; i < args.size(); i++)
-    DynamicVector[vec_name].insert(DynamicVector[vec_name].begin(), args[i]);
-  return RespType::Integer(DynamicVector[vec_name].size()).to_bytes();
+  std::vector<std::string> &list = DynamicVector[vec_name];
+
+  for (std::size_t i = 2; i < args.size(); ++i) {
+    list.insert(list.begin(), args[i]);
+  }
+
+  return RespType::Integer(static_cast<long long>(list.size())).to_bytes();
 }
 
 std::string Store::handle_lpop(const std::vector<std::string> &args) {
-
-  const std::string &vec_name = args[1];
-
-  if (!(DynamicVector.find(vec_name) != DynamicVector.end()))
-    return RespType::NullBulkString().to_bytes();
-
-  auto number_of_elements_to_remove = args[3];
-  auto number_of_ele = stoi(number_of_elements_to_remove);
-
-  std::vector<std::string> elements_removed{};
-  while (number_of_ele--) {
-    auto b = DynamicVector[vec_name];
-    auto first_element = b[0];
-    b.erase(b.begin());
-    DynamicVector[vec_name] = b;
-    elements_removed.push_back(first_element);
+  if (args.size() != 2 && args.size() != 3) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'lpop' command")
+        .to_bytes();
   }
-  return RespType::Array(elements_removed).to_bytes();
+
+  const std::string &key = args[1];
+
+  auto it = DynamicVector.find(key);
+  const bool empty = it == DynamicVector.end() || it->second.empty();
+
+  if (args.size() == 2) {
+    if (empty) {
+      return RespType::NullBulkString().to_bytes();
+    }
+
+    std::string first = std::move(it->second.front());
+    it->second.erase(it->second.begin());
+
+    if (it->second.empty()) {
+      DynamicVector.erase(it);
+    }
+
+    return RespType::BulkString(std::move(first)).to_bytes();
+  }
+
+  long long count;
+
+  try {
+    count = std::stoll(args[2]);
+  } catch (...) {
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  }
+
+  if (count < 0) {
+    return RespType::SimpleError("ERR value is out of range, must be positive")
+        .to_bytes();
+  }
+
+  if (empty) {
+    return RespType::NullArray().to_bytes();
+  }
+
+  if (count == 0) {
+    return RespType::Array({}).to_bytes();
+  }
+
+  std::vector<std::string> &list = it->second;
+  const std::size_t taken =
+      std::min(static_cast<std::size_t>(count), list.size());
+
+  std::vector<std::string> removed(
+      std::make_move_iterator(list.begin()),
+      std::make_move_iterator(list.begin() +
+                              static_cast<std::ptrdiff_t>(taken)));
+
+  list.erase(list.begin(), list.begin() + static_cast<std::ptrdiff_t>(taken));
+
+  if (list.empty()) {
+    DynamicVector.erase(it);
+  }
+
+  return RespType::Array(std::move(removed)).to_bytes();
 }
 
 std::optional<std::pair<std::string, std::string>>
@@ -152,7 +232,15 @@ Store::try_blpop(const std::vector<std::string> &keys) {
   return std::nullopt;
 }
 
+std::optional<BlockRequest> Store::take_pending_block() {
+  std::optional<BlockRequest> block = std::move(pending_block_);
+  pending_block_.reset();
+  return block;
+}
+
 std::string Store::handle_blpop(const std::vector<std::string> &args) {
+  pending_block_.reset();
+
   if (args.size() < 3) {
     return RespType::SimpleError(
                "ERR wrong number of arguments for 'blpop' command")
@@ -185,6 +273,9 @@ std::string Store::handle_blpop(const std::vector<std::string> &args) {
     return RespType::Array({popped->first, popped->second}).to_bytes();
   }
 
+  // Nothing to pop: park the caller. The server drains this and adds the
+  // client to its wait queue instead of sending a reply.
+  pending_block_ = BlockRequest{keys, timeout};
   return {};
 }
 

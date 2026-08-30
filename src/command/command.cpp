@@ -1,3 +1,6 @@
+#include "command/command.hpp"
+
+#include <cctype>
 #include <string>
 #include <vector>
 

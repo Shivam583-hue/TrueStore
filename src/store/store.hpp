@@ -8,10 +8,16 @@
 #include <utility>
 #include <vector>
 
+struct BlockRequest {
+  std::vector<std::string> keys;
+  double timeout;
+};
+
 class Store {
   std::map<std::string, std::string> Storage;
   std::map<std::string, std::chrono::steady_clock::time_point> Expirations;
   std::unordered_map<std::string, std::vector<std::string>> DynamicVector;
+  std::optional<BlockRequest> pending_block_;
 
 public:
   std::string handle_set(const std::vector<std::string> &args);
@@ -26,4 +32,6 @@ public:
 
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
+
+  std::optional<BlockRequest> take_pending_block();
 };
