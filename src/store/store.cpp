@@ -295,6 +295,10 @@ std::string Store::handle_type(const std::vector<std::string> &args) {
   auto key = args[1];
   std::string n = "none";
 
+  if (Streams.find(key) != Streams.end()) {
+    return RespType::SimpleString("stream").to_bytes();
+  }
+
   auto it = Storage.find(key);
   if (it == Storage.end()) {
     return RespType::SimpleString(n).to_bytes();
@@ -302,6 +306,59 @@ std::string Store::handle_type(const std::vector<std::string> &args) {
 
   auto val = it->second;
   return RespType::SimpleString(get_type<decltype(val)>()).to_bytes();
+}
+
+std::string Store::handle_xadd(const std::vector<std::string> &args) {
+  if (args.size() < 5 || (args.size() - 3) % 2 != 0) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'xadd' command")
+        .to_bytes();
+  }
+
+  const std::string &key = args[1];
+  const std::string &id = args[2];
+
+  StreamEntryData data;
+  data.reserve((args.size() - 3) / 2);
+
+  for (std::size_t i = 3; i < args.size(); i += 2) {
+    data.emplace_back(args[i], args[i + 1]);
+  }
+
+  auto it = Streams.find(key);
+  const bool created = it == Streams.end();
+
+  if (created) {
+    it = Streams.try_emplace(key).first;
+  }
+
+  const StreamAddResult result = it->second.insert(id, std::move(data));
+
+  if (created && result != StreamAddResult::Ok) {
+    Streams.erase(it);
+  }
+
+  switch (result) {
+  case StreamAddResult::Ok:
+    return RespType::BulkString(id).to_bytes();
+
+  case StreamAddResult::ZeroID:
+    return RespType::SimpleError(
+               "ERR The ID specified in XADD must be greater than 0-0")
+        .to_bytes();
+
+  case StreamAddResult::NotGreater:
+    return RespType::SimpleError("ERR The ID specified in XADD is equal or "
+                                 "smaller than the target stream top item")
+        .to_bytes();
+
+  case StreamAddResult::InvalidID:
+    break;
+  }
+
+  return RespType::SimpleError(
+             "ERR Invalid stream ID specified as stream command argument")
+      .to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

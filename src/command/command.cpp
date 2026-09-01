@@ -61,6 +61,9 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "TYPE")
     return store.handle_type(args);
 
+  if (command == "XADD")
+    return store.handle_xadd(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }

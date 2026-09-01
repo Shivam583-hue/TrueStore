@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "stream/stream.hpp"
+
 struct BlockRequest {
   std::vector<std::string> keys;
   double timeout;
@@ -18,6 +20,7 @@ class Store {
   std::map<std::string, std::chrono::steady_clock::time_point> Expirations;
   std::unordered_map<std::string, std::vector<std::string>> DynamicVector;
   std::optional<BlockRequest> pending_block_;
+  std::unordered_map<std::string, Stream> Streams;
 
 public:
   std::string handle_set(const std::vector<std::string> &args);
@@ -30,6 +33,7 @@ public:
   std::string handle_lpop(const std::vector<std::string> &args);
   std::string handle_blpop(const std::vector<std::string> &args);
   std::string handle_type(const std::vector<std::string> &args);
+  std::string handle_xadd(const std::vector<std::string> &args);
 
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
