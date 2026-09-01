@@ -5,6 +5,14 @@
 #include <cmath>
 #include <iterator>
 
+template <typename T> const char *get_type() { return "unknown"; }
+template <> const char *get_type<int>() { return "int"; }
+template <> const char *get_type<double>() { return "double"; }
+template <> const char *get_type<float>() { return "float"; }
+template <> const char *get_type<char>() { return "char"; }
+template <> const char *get_type<bool>() { return "bool"; }
+template <> const char *get_type<std::string>() { return "string"; }
+
 std::string Store::handle_set(const std::vector<std::string> &args) {
   if (args.size() != 3 && args.size() != 5) {
     return RespType::SimpleError(
@@ -273,10 +281,27 @@ std::string Store::handle_blpop(const std::vector<std::string> &args) {
     return RespType::Array({popped->first, popped->second}).to_bytes();
   }
 
-  // Nothing to pop: park the caller. The server drains this and adds the
-  // client to its wait queue instead of sending a reply.
   pending_block_ = BlockRequest{keys, timeout};
   return {};
+}
+
+std::string Store::handle_type(const std::vector<std::string> &args) {
+  if (args.size() != 2) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'lrange' command")
+        .to_bytes();
+  }
+
+  auto key = args[1];
+  std::string n = "none";
+
+  auto it = Storage.find(key);
+  if (it == Storage.end()) {
+    return RespType::SimpleString(n).to_bytes();
+  }
+
+  auto val = it->second;
+  return RespType::SimpleString(get_type<decltype(val)>()).to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

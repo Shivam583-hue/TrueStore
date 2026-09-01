@@ -29,6 +29,7 @@ public:
   std::string handle_llen(const std::vector<std::string> &args);
   std::string handle_lpop(const std::vector<std::string> &args);
   std::string handle_blpop(const std::vector<std::string> &args);
+  std::string handle_type(const std::vector<std::string> &args);
 
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
