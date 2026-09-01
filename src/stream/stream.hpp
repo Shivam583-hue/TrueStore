@@ -44,6 +44,8 @@ class Stream {
   static StreamID decode_id(const unsigned char *key, std::size_t len);
 
   StreamAddResult resolve_id(const std::string &id_text, StreamID &out) const;
+  StreamAddResult next_sequence(std::uint64_t milliseconds,
+                                StreamID &out) const;
 
 public:
   Stream();

@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <charconv>
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <new>
@@ -54,6 +55,14 @@ void write_u64_be(unsigned char *destination, std::uint64_t value) {
   }
 }
 
+std::uint64_t now_milliseconds() {
+  const auto since_epoch =
+      std::chrono::system_clock::now().time_since_epoch();
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(since_epoch)
+          .count());
+}
+
 std::uint64_t read_u64_be(const unsigned char *source) {
   std::uint64_t value = 0;
   for (int i = 0; i < 8; ++i) {
@@ -98,11 +107,34 @@ Stream::~Stream() {
   }
 }
 
+StreamAddResult Stream::next_sequence(std::uint64_t milliseconds,
+                                      StreamID &out) const {
+  if (!has_max_id_) {
+    out = StreamID{milliseconds, milliseconds == 0 ? 1u : 0u};
+    return StreamAddResult::Ok;
+  }
+
+  if (milliseconds > max_id_.milliseconds) {
+    out = StreamID{milliseconds, 0};
+    return StreamAddResult::Ok;
+  }
+
+  if (max_id_.sequence == std::numeric_limits<std::uint64_t>::max()) {
+    return StreamAddResult::NotGreater;
+  }
+
+  out = StreamID{max_id_.milliseconds, max_id_.sequence + 1};
+  return StreamAddResult::Ok;
+}
+
 StreamAddResult Stream::resolve_id(const std::string &id_text,
                                    StreamID &out) const {
+  if (id_text == "*") {
+    return next_sequence(now_milliseconds(), out);
+  }
+
   const std::size_t dash = id_text.find('-');
 
-  // Partially auto-generated: <milliseconds>-*
   if (dash != std::string::npos &&
       id_text.compare(dash + 1, std::string::npos, "*") == 0) {
     if (dash == 0) {
@@ -117,27 +149,11 @@ StreamAddResult Stream::resolve_id(const std::string &id_text,
       return StreamAddResult::InvalidID;
     }
 
-    if (!has_max_id_) {
-      // 0-0 is reserved, so an empty stream starts at 0-1 for ms == 0.
-      out = StreamID{ms, ms == 0 ? 1u : 0u};
-      return StreamAddResult::Ok;
-    }
-
-    if (ms < max_id_.milliseconds) {
+    if (has_max_id_ && ms < max_id_.milliseconds) {
       return StreamAddResult::NotGreater;
     }
 
-    if (ms > max_id_.milliseconds) {
-      out = StreamID{ms, 0};
-      return StreamAddResult::Ok;
-    }
-
-    if (max_id_.sequence == std::numeric_limits<std::uint64_t>::max()) {
-      return StreamAddResult::NotGreater;
-    }
-
-    out = StreamID{ms, max_id_.sequence + 1};
-    return StreamAddResult::Ok;
+    return next_sequence(ms, out);
   }
 
   if (!StreamID::parse(id_text, out)) {
@@ -148,7 +164,6 @@ StreamAddResult Stream::resolve_id(const std::string &id_text,
     return StreamAddResult::ZeroID;
   }
 
-  // Explicit IDs must be strictly greater than the current top item.
   if (has_max_id_ && !(max_id_ < out)) {
     return StreamAddResult::NotGreater;
   }
