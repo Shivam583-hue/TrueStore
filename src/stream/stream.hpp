@@ -43,6 +43,8 @@ class Stream {
   static EncodedID encode_id(const StreamID &id);
   static StreamID decode_id(const unsigned char *key, std::size_t len);
 
+  StreamAddResult resolve_id(const std::string &id_text, StreamID &out) const;
+
 public:
   Stream();
   ~Stream();
@@ -52,7 +54,8 @@ public:
   Stream(Stream &&) = delete;
   Stream &operator=(Stream &&) = delete;
 
-  StreamAddResult insert(const std::string &id_text, StreamEntryData data);
+  StreamAddResult insert(const std::string &id_text, StreamEntryData data,
+                         StreamID &assigned);
 
   const StreamEntryData *find(const std::string &id_text) const;
 

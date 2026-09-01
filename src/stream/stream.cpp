@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <charconv>
+#include <limits>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -68,7 +69,6 @@ void Stream::free_payload(void *payload) {
 }
 
 Stream::EncodedID Stream::encode_id(const StreamID &id) {
-  // Big-endian so that lexicographic rax order matches numeric ID order.
   EncodedID encoded{};
   write_u64_be(encoded.data(), id.milliseconds);
   write_u64_be(encoded.data() + 8, id.sequence);
@@ -98,21 +98,71 @@ Stream::~Stream() {
   }
 }
 
-StreamAddResult Stream::insert(const std::string &id_text,
-                               StreamEntryData data) {
-  StreamID id;
+StreamAddResult Stream::resolve_id(const std::string &id_text,
+                                   StreamID &out) const {
+  const std::size_t dash = id_text.find('-');
 
-  if (!StreamID::parse(id_text, id)) {
+  // Partially auto-generated: <milliseconds>-*
+  if (dash != std::string::npos &&
+      id_text.compare(dash + 1, std::string::npos, "*") == 0) {
+    if (dash == 0) {
+      return StreamAddResult::InvalidID;
+    }
+
+    std::uint64_t ms = 0;
+    const char *begin = id_text.data();
+    const auto result = std::from_chars(begin, begin + dash, ms);
+
+    if (result.ec != std::errc{} || result.ptr != begin + dash) {
+      return StreamAddResult::InvalidID;
+    }
+
+    if (!has_max_id_) {
+      // 0-0 is reserved, so an empty stream starts at 0-1 for ms == 0.
+      out = StreamID{ms, ms == 0 ? 1u : 0u};
+      return StreamAddResult::Ok;
+    }
+
+    if (ms < max_id_.milliseconds) {
+      return StreamAddResult::NotGreater;
+    }
+
+    if (ms > max_id_.milliseconds) {
+      out = StreamID{ms, 0};
+      return StreamAddResult::Ok;
+    }
+
+    if (max_id_.sequence == std::numeric_limits<std::uint64_t>::max()) {
+      return StreamAddResult::NotGreater;
+    }
+
+    out = StreamID{ms, max_id_.sequence + 1};
+    return StreamAddResult::Ok;
+  }
+
+  if (!StreamID::parse(id_text, out)) {
     return StreamAddResult::InvalidID;
   }
 
-  if (id.milliseconds == 0 && id.sequence == 0) {
+  if (out.milliseconds == 0 && out.sequence == 0) {
     return StreamAddResult::ZeroID;
   }
 
   // Explicit IDs must be strictly greater than the current top item.
-  if (has_max_id_ && !(max_id_ < id)) {
+  if (has_max_id_ && !(max_id_ < out)) {
     return StreamAddResult::NotGreater;
+  }
+
+  return StreamAddResult::Ok;
+}
+
+StreamAddResult Stream::insert(const std::string &id_text, StreamEntryData data,
+                               StreamID &assigned) {
+  StreamID id;
+  const StreamAddResult resolved = resolve_id(id_text, id);
+
+  if (resolved != StreamAddResult::Ok) {
+    return resolved;
   }
 
   EncodedID key = encode_id(id);
@@ -126,13 +176,13 @@ StreamAddResult Stream::insert(const std::string &id_text,
     if (errno == ENOMEM) {
       throw std::bad_alloc();
     }
-    // Duplicate key; already rejected by the max-ID check above.
     return StreamAddResult::NotGreater;
   }
 
   payload.release();
   max_id_ = id;
   has_max_id_ = true;
+  assigned = id;
   return StreamAddResult::Ok;
 }
 

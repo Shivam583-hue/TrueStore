@@ -332,7 +332,9 @@ std::string Store::handle_xadd(const std::vector<std::string> &args) {
     it = Streams.try_emplace(key).first;
   }
 
-  const StreamAddResult result = it->second.insert(id, std::move(data));
+  StreamID assigned;
+  const StreamAddResult result =
+      it->second.insert(id, std::move(data), assigned);
 
   if (created && result != StreamAddResult::Ok) {
     Streams.erase(it);
@@ -340,7 +342,7 @@ std::string Store::handle_xadd(const std::vector<std::string> &args) {
 
   switch (result) {
   case StreamAddResult::Ok:
-    return RespType::BulkString(id).to_bytes();
+    return RespType::BulkString(assigned.to_string()).to_bytes();
 
   case StreamAddResult::ZeroID:
     return RespType::SimpleError(
