@@ -48,6 +48,8 @@ public:
 
   std::string handle_incr(const std::vector<std::string> &args);
 
+  std::optional<std::string> peek(const std::string &key);
+
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
 

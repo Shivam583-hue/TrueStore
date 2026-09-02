@@ -80,6 +80,20 @@ bool Store::is_expired(const std::string &key) {
   return false;
 }
 
+std::optional<std::string> Store::peek(const std::string &key) {
+  if (is_expired(key)) {
+    return std::nullopt;
+  }
+
+  auto it = Storage.find(key);
+
+  if (it == Storage.end()) {
+    return std::nullopt;
+  }
+
+  return it->second;
+}
+
 std::string Store::handle_get(const std::vector<std::string> &args) {
   if (args.size() != 2) {
     return RespType::SimpleError(

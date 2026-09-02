@@ -1,6 +1,7 @@
 #include "command/command.hpp"
 
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,6 +102,30 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
     return RespType::SimpleString("OK").to_bytes();
   }
 
+  if (command == "WATCH") {
+    if (args.size() < 2) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'watch' command")
+          .to_bytes();
+    }
+
+    if (client.in_multi) {
+      return RespType::SimpleError("ERR WATCH inside MULTI is not allowed")
+          .to_bytes();
+    }
+
+    for (std::size_t i = 1; i < args.size(); ++i) {
+      client.watched.emplace_back(args[i], store.peek(args[i]));
+    }
+
+    return RespType::SimpleString("OK").to_bytes();
+  }
+
+  if (command == "UNWATCH") {
+    client.watched.clear();
+    return RespType::SimpleString("OK").to_bytes();
+  }
+
   if (command == "DISCARD") {
     if (!client.in_multi) {
       return RespType::SimpleError("ERR DISCARD without MULTI").to_bytes();
@@ -108,6 +133,7 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
 
     client.in_multi = false;
     client.queued.clear();
+    client.watched.clear();
     return RespType::SimpleString("OK").to_bytes();
   }
 
@@ -119,8 +145,22 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
     const std::vector<std::vector<std::string>> queued =
         std::move(client.queued);
 
+    bool dirty = false;
+
+    for (const auto &[key, snapshot] : client.watched) {
+      if (store.peek(key) != snapshot) {
+        dirty = true;
+        break;
+      }
+    }
+
     client.in_multi = false;
     client.queued.clear();
+    client.watched.clear();
+
+    if (dirty) {
+      return RespType::NullArray().to_bytes();
+    }
 
     std::string reply = "*" + std::to_string(queued.size()) + "\r\n";
 
