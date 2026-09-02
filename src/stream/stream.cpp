@@ -109,6 +109,27 @@ bool parse_range_start(const std::string &text, StreamID &out) {
   return parse_range_bound(text, 0, out);
 }
 
+bool parse_read_id(const std::string &text, StreamID &out) {
+  return parse_range_bound(text, 0, out);
+}
+
+bool advance_id(StreamID &id) {
+  const std::uint64_t max = std::numeric_limits<std::uint64_t>::max();
+
+  if (id.sequence != max) {
+    ++id.sequence;
+    return true;
+  }
+
+  if (id.milliseconds == max) {
+    return false;
+  }
+
+  ++id.milliseconds;
+  id.sequence = 0;
+  return true;
+}
+
 bool parse_range_end(const std::string &text, StreamID &out) {
   const std::uint64_t max = std::numeric_limits<std::uint64_t>::max();
 
@@ -246,6 +267,15 @@ StreamAddResult Stream::insert(const std::string &id_text, StreamEntryData data,
   has_max_id_ = true;
   assigned = id;
   return StreamAddResult::Ok;
+}
+
+bool Stream::last_id(StreamID &out) const {
+  if (!has_max_id_) {
+    return false;
+  }
+
+  out = max_id_;
+  return true;
 }
 
 const StreamEntryData *Stream::find(const std::string &id_text) const {

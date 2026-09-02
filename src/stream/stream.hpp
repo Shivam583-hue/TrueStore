@@ -26,6 +26,8 @@ bool operator<(const StreamID &a, const StreamID &b);
 
 bool parse_range_start(const std::string &text, StreamID &out);
 bool parse_range_end(const std::string &text, StreamID &out);
+bool parse_read_id(const std::string &text, StreamID &out);
+bool advance_id(StreamID &id);
 
 enum class StreamAddResult {
   Ok,
@@ -63,6 +65,8 @@ public:
                          StreamID &assigned);
 
   const StreamEntryData *find(const std::string &id_text) const;
+
+  bool last_id(StreamID &out) const;
 
   std::vector<std::pair<std::string, StreamEntryData>>
   get_range(const StreamID &start, const StreamID &end,

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <iterator>
 
 template <typename T> const char *get_type() { return "unknown"; }
@@ -364,6 +365,31 @@ std::string Store::handle_xadd(const std::vector<std::string> &args) {
       .to_bytes();
 }
 
+namespace {
+
+RespType entries_to_resp(
+    const std::vector<std::pair<std::string, StreamEntryData>> &entries) {
+  std::vector<RespType> encoded;
+  encoded.reserve(entries.size());
+
+  for (const auto &[id, data] : entries) {
+    std::vector<std::string> fields;
+    fields.reserve(data.size() * 2);
+
+    for (const auto &[field, value] : data) {
+      fields.push_back(field);
+      fields.push_back(value);
+    }
+
+    encoded.push_back(RespType::NestedArray(
+        {RespType::BulkString(id), RespType::Array(std::move(fields))}));
+  }
+
+  return RespType::NestedArray(std::move(encoded));
+}
+
+} // namespace
+
 std::string Store::handle_xrange(const std::vector<std::string> &args) {
   if (args.size() != 4 && args.size() != 6) {
     return RespType::SimpleError(
@@ -410,22 +436,101 @@ std::string Store::handle_xrange(const std::vector<std::string> &args) {
     return RespType::Array({}).to_bytes();
   }
 
-  std::vector<RespType> entries;
+  return entries_to_resp(it->second.get_range(start, end, count)).to_bytes();
+}
 
-  for (const auto &[id, data] : it->second.get_range(start, end, count)) {
-    std::vector<std::string> fields;
-    fields.reserve(data.size() * 2);
+std::string Store::handle_xread(const std::vector<std::string> &args) {
+  std::size_t i = 1;
+  std::size_t count = 0;
 
-    for (const auto &[field, value] : data) {
-      fields.push_back(field);
-      fields.push_back(value);
+  while (i < args.size() && to_upper(args[i]) != "STREAMS") {
+    const std::string option = to_upper(args[i]);
+
+    if (option == "BLOCK") {
+      return RespType::SimpleError("ERR BLOCK is not supported").to_bytes();
     }
 
-    entries.push_back(RespType::NestedArray(
-        {RespType::BulkString(id), RespType::Array(std::move(fields))}));
+    if (option != "COUNT" || i + 1 >= args.size()) {
+      return RespType::SimpleError("ERR syntax error").to_bytes();
+    }
+
+    long long parsed;
+
+    try {
+      parsed = std::stoll(args[i + 1]);
+    } catch (...) {
+      return RespType::SimpleError(
+                 "ERR value is not an integer or out of range")
+          .to_bytes();
+    }
+
+    count = parsed > 0 ? static_cast<std::size_t>(parsed) : 0;
+    i += 2;
   }
 
-  return RespType::NestedArray(std::move(entries)).to_bytes();
+  if (i >= args.size()) {
+    return RespType::SimpleError("ERR syntax error").to_bytes();
+  }
+
+  ++i;
+
+  const std::size_t remaining = args.size() - i;
+
+  if (remaining == 0 || remaining % 2 != 0) {
+    return RespType::SimpleError(
+               "ERR Unbalanced XREAD list of streams: for each stream key an "
+               "ID or '$' must be specified.")
+        .to_bytes();
+  }
+
+  const std::size_t total = remaining / 2;
+  std::vector<RespType> replies;
+
+  for (std::size_t n = 0; n < total; ++n) {
+    const std::string &key = args[i + n];
+    const std::string &id_text = args[i + total + n];
+
+    auto it = Streams.find(key);
+    StreamID after{};
+
+    if (id_text == "$") {
+      if (it == Streams.end() || !it->second.last_id(after)) {
+        continue;
+      }
+    } else if (!parse_read_id(id_text, after)) {
+      return RespType::SimpleError(
+                 "ERR Invalid stream ID specified as stream command argument")
+          .to_bytes();
+    }
+
+    if (it == Streams.end()) {
+      continue;
+    }
+
+    StreamID start = after;
+
+    if (!advance_id(start)) {
+      continue;
+    }
+
+    const StreamID end{std::numeric_limits<std::uint64_t>::max(),
+                       std::numeric_limits<std::uint64_t>::max()};
+
+    auto entries = it->second.get_range(start, end, count);
+
+    if (entries.empty()) {
+      continue;
+    }
+
+    replies.push_back(RespType::NestedArray(
+        {RespType::BulkString(key), entries_to_resp(entries)}));
+  }
+
+  if (replies.empty()) {
+    return RespType::NullArray().to_bytes();
+  }
+
+  return RespType::NestedArray(std::move(replies)).to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {
