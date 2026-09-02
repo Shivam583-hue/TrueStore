@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "resp/resp.hpp"
@@ -115,7 +116,25 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
       return RespType::SimpleError("ERR EXEC without MULTI").to_bytes();
     }
 
-    return RespType::SimpleError("ERR EXEC is not implemented").to_bytes();
+    const std::vector<std::vector<std::string>> queued =
+        std::move(client.queued);
+
+    client.in_multi = false;
+    client.queued.clear();
+
+    std::string reply = "*" + std::to_string(queued.size()) + "\r\n";
+
+    for (const std::vector<std::string> &queued_args : queued) {
+      std::string result = dispatch_command(queued_args, store);
+
+      if (store.take_pending_block()) {
+        result = RespType::NullArray().to_bytes();
+      }
+
+      reply += result;
+    }
+
+    return reply;
   }
 
   if (client.in_multi) {
