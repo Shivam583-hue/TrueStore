@@ -14,11 +14,9 @@ std::string to_upper(std::string value) {
   return value;
 }
 
-std::string handle_command(const std::vector<std::string> &args, Store &store) {
-  if (args.empty()) {
-    return RespType::SimpleError("ERR empty command").to_bytes();
-  }
-
+namespace {
+std::string dispatch_command(const std::vector<std::string> &args,
+                             Store &store) {
   std::string command = to_upper(args[0]);
 
   if (command == "PING") {
@@ -73,9 +71,57 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "INCR")
     return store.handle_incr(args);
 
-  if (command == "MULTI")
-    return store.handle_multi(args);
-
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
+}
+} // namespace
+
+std::string handle_command(const std::vector<std::string> &args, Store &store,
+                           ClientState &client) {
+  if (args.empty()) {
+    return RespType::SimpleError("ERR empty command").to_bytes();
+  }
+
+  std::string command = to_upper(args[0]);
+
+  if (command == "MULTI") {
+    if (args.size() != 1) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'multi' command")
+          .to_bytes();
+    }
+
+    if (client.in_multi) {
+      return RespType::SimpleError("ERR MULTI calls can not be nested")
+          .to_bytes();
+    }
+
+    client.in_multi = true;
+    return RespType::SimpleString("OK").to_bytes();
+  }
+
+  if (command == "DISCARD") {
+    if (!client.in_multi) {
+      return RespType::SimpleError("ERR DISCARD without MULTI").to_bytes();
+    }
+
+    client.in_multi = false;
+    client.queued.clear();
+    return RespType::SimpleString("OK").to_bytes();
+  }
+
+  if (command == "EXEC") {
+    if (!client.in_multi) {
+      return RespType::SimpleError("ERR EXEC without MULTI").to_bytes();
+    }
+
+    return RespType::SimpleError("ERR EXEC is not implemented").to_bytes();
+  }
+
+  if (client.in_multi) {
+    client.queued.push_back(args);
+    return RespType::SimpleString("QUEUED").to_bytes();
+  }
+
+  return dispatch_command(args, store);
 }

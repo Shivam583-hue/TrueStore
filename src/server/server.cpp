@@ -126,6 +126,7 @@ void Server::run() {
   int nfds = 1;
 
   std::unordered_map<int, std::string> buffers;
+  std::unordered_map<int, ClientState> clients;
 
   std::vector<Waiter> waiters;
 
@@ -133,6 +134,7 @@ void Server::run() {
     close(fd);
     fds[index].fd = -1;
     buffers.erase(fd);
+    clients.erase(fd);
     waiters.erase(std::remove_if(waiters.begin(), waiters.end(),
                                  [fd](const Waiter &w) { return w.fd == fd; }),
                   waiters.end());
@@ -291,7 +293,7 @@ void Server::run() {
                 std::string response;
 
                 try {
-                  response = handle_command(args, store);
+                  response = handle_command(args, store, clients[fd]);
                 } catch (const std::exception &e) {
                   std::cerr << "Command error: " << e.what() << '\n';
                   response =
