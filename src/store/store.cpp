@@ -4,8 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <iterator>
+#include <limits>
 
 template <typename T> const char *get_type() { return "unknown"; }
 template <> const char *get_type<int>() { return "int"; }
@@ -577,6 +577,24 @@ std::string Store::handle_xread(const std::vector<std::string> &args) {
   }
 
   return RespType::NullArray().to_bytes();
+}
+
+std::string Store::handle_incr(const std::vector<std::string> &args) {
+  if (args.size() != 2) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'lrange' command")
+        .to_bytes();
+  }
+
+  auto key = args[1];
+  if (!(Storage.find(key) != Storage.end())) {
+    return RespType::SimpleError("No key found").to_bytes();
+  }
+  auto val = Storage[key];
+  int n = std::stoi(val);
+  n++;
+  Storage[key] = n;
+  return RespType::Integer(n).to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

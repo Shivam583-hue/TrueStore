@@ -70,6 +70,9 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "XREAD")
     return store.handle_xread(args);
 
+  if (command == "INCR")
+    return store.handle_incr(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }
