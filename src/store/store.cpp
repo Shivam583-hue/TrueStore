@@ -588,12 +588,26 @@ std::string Store::handle_incr(const std::vector<std::string> &args) {
 
   auto key = args[1];
   if (!(Storage.find(key) != Storage.end())) {
-    return RespType::SimpleError("No key found").to_bytes();
+    Storage[key] = "1";
+    return RespType::Integer(1).to_bytes();
   }
   auto val = Storage[key];
-  int n = std::stoi(val);
+  int n;
+  try {
+    n = std::stoi(val);
+  } catch (const std::invalid_argument &e) {
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  } catch (const std::out_of_range &e) {
+
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  } catch (const std::exception &e) {
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  }
   n++;
-  Storage[key] = n;
+  Storage[key] = std::to_string(n);
   return RespType::Integer(n).to_bytes();
 }
 

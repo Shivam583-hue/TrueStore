@@ -73,6 +73,9 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "INCR")
     return store.handle_incr(args);
 
+  if (command == "MULTI")
+    return store.handle_multi(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }

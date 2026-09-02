@@ -47,6 +47,7 @@ public:
   std::string handle_xread(const std::vector<std::string> &args);
 
   std::string handle_incr(const std::vector<std::string> &args);
+  std::string handle_multi(const std::vector<std::string> &args);
 
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
