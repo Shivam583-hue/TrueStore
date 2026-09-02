@@ -1,4 +1,5 @@
 #include "store/store.hpp"
+#include "command/command.hpp"
 #include "resp/resp.hpp"
 
 #include <algorithm>
@@ -361,6 +362,70 @@ std::string Store::handle_xadd(const std::vector<std::string> &args) {
   return RespType::SimpleError(
              "ERR Invalid stream ID specified as stream command argument")
       .to_bytes();
+}
+
+std::string Store::handle_xrange(const std::vector<std::string> &args) {
+  if (args.size() != 4 && args.size() != 6) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'xrange' command")
+        .to_bytes();
+  }
+
+  StreamID start;
+  StreamID end;
+
+  if (!parse_range_start(args[2], start) || !parse_range_end(args[3], end)) {
+    return RespType::SimpleError(
+               "ERR Invalid stream ID specified as stream command argument")
+        .to_bytes();
+  }
+
+  std::size_t count = 0;
+
+  if (args.size() == 6) {
+    if (to_upper(args[4]) != "COUNT") {
+      return RespType::SimpleError("ERR syntax error").to_bytes();
+    }
+
+    long long parsed;
+
+    try {
+      parsed = std::stoll(args[5]);
+    } catch (...) {
+      return RespType::SimpleError(
+                 "ERR value is not an integer or out of range")
+          .to_bytes();
+    }
+
+    if (parsed <= 0) {
+      return RespType::Array({}).to_bytes();
+    }
+
+    count = static_cast<std::size_t>(parsed);
+  }
+
+  auto it = Streams.find(args[1]);
+
+  if (it == Streams.end()) {
+    return RespType::Array({}).to_bytes();
+  }
+
+  std::vector<RespType> entries;
+
+  for (const auto &[id, data] : it->second.get_range(start, end, count)) {
+    std::vector<std::string> fields;
+    fields.reserve(data.size() * 2);
+
+    for (const auto &[field, value] : data) {
+      fields.push_back(field);
+      fields.push_back(value);
+    }
+
+    entries.push_back(RespType::NestedArray(
+        {RespType::BulkString(id), RespType::Array(std::move(fields))}));
+  }
+
+  return RespType::NestedArray(std::move(entries)).to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {

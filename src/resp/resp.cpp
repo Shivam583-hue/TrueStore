@@ -28,6 +28,13 @@ RespType RespType::Array(std::vector<std::string> elements) {
   return resp;
 }
 
+RespType RespType::NestedArray(std::vector<RespType> nested) {
+  RespType resp;
+  resp.type = Type::NestedArray;
+  resp.nested = std::move(nested);
+  return resp;
+}
+
 RespType RespType::NullArray() { return {Type::NullArray, "", {}}; }
 
 std::string RespType::to_bytes() const {
@@ -56,6 +63,16 @@ std::string RespType::to_bytes() const {
 
     for (const auto &element : elements) {
       bytes += BulkString(element).to_bytes();
+    }
+
+    return bytes;
+  }
+
+  case Type::NestedArray: {
+    std::string bytes = "*" + std::to_string(nested.size()) + "\r\n";
+
+    for (const auto &element : nested) {
+      bytes += element.to_bytes();
     }
 
     return bytes;

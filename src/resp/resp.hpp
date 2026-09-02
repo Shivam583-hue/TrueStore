@@ -20,12 +20,14 @@ struct RespType {
     NullBulkString,
     Integer,
     Array,
+    NestedArray,
     NullArray
   };
 
   Type type;
   std::string value;
   std::vector<std::string> elements;
+  std::vector<RespType> nested;
 
   static RespType SimpleString(std::string value);
   static RespType BulkString(std::string value);
@@ -33,6 +35,7 @@ struct RespType {
   static RespType NullBulkString();
   static RespType Integer(long long value);
   static RespType Array(std::vector<std::string> elements);
+  static RespType NestedArray(std::vector<RespType> nested);
   static RespType NullArray();
 
   std::string to_bytes() const;

@@ -73,6 +73,53 @@ std::uint64_t read_u64_be(const unsigned char *source) {
 
 } // namespace
 
+namespace {
+
+bool parse_range_bound(const std::string &text, std::uint64_t default_sequence,
+                       StreamID &out) {
+  if (text.empty()) {
+    return false;
+  }
+
+  if (text.find('-') != std::string::npos) {
+    return StreamID::parse(text, out);
+  }
+
+  std::uint64_t ms = 0;
+  const char *begin = text.data();
+  const char *end = text.data() + text.size();
+  const auto result = std::from_chars(begin, end, ms);
+
+  if (result.ec != std::errc{} || result.ptr != end) {
+    return false;
+  }
+
+  out = StreamID{ms, default_sequence};
+  return true;
+}
+
+} // namespace
+
+bool parse_range_start(const std::string &text, StreamID &out) {
+  if (text == "-") {
+    out = StreamID{0, 0};
+    return true;
+  }
+
+  return parse_range_bound(text, 0, out);
+}
+
+bool parse_range_end(const std::string &text, StreamID &out) {
+  const std::uint64_t max = std::numeric_limits<std::uint64_t>::max();
+
+  if (text == "+") {
+    out = StreamID{max, max};
+    return true;
+  }
+
+  return parse_range_bound(text, max, out);
+}
+
 void Stream::free_payload(void *payload) {
   delete static_cast<StreamEntryData *>(payload);
 }
@@ -219,16 +266,15 @@ const StreamEntryData *Stream::find(const std::string &id_text) const {
 }
 
 std::vector<std::pair<std::string, StreamEntryData>>
-Stream::get_range(const std::string &start_id_text) const {
-  StreamID start_id;
+Stream::get_range(const StreamID &start, const StreamID &end,
+                  std::size_t count) const {
+  std::vector<std::pair<std::string, StreamEntryData>> results;
 
-  if (!StreamID::parse(start_id_text, start_id)) {
-    throw std::invalid_argument(
-        "invalid stream ID, expected <milliseconds>-<sequence>");
+  if (end < start) {
+    return results;
   }
 
-  EncodedID start_key = encode_id(start_id);
-  std::vector<std::pair<std::string, StreamEntryData>> results;
+  EncodedID start_key = encode_id(start);
 
   raxIterator iterator;
   raxStart(&iterator, tree_);
@@ -249,10 +295,19 @@ Stream::get_range(const std::string &start_id_text) const {
 
   while (raxNext(&iterator)) {
     const StreamID id = decode_id(iterator.key, iterator.key_len);
+
+    if (end < id) {
+      break;
+    }
+
     const auto *payload = static_cast<const StreamEntryData *>(iterator.data);
 
     if (payload != nullptr) {
       results.emplace_back(id.to_string(), *payload);
+    }
+
+    if (count != 0 && results.size() >= count) {
+      break;
     }
 
     errno = 0;

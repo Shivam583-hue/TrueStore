@@ -64,6 +64,9 @@ std::string handle_command(const std::vector<std::string> &args, Store &store) {
   if (command == "XADD")
     return store.handle_xadd(args);
 
+  if (command == "XRANGE")
+    return store.handle_xrange(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }

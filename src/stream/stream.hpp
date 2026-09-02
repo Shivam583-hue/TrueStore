@@ -24,6 +24,9 @@ struct StreamID {
 
 bool operator<(const StreamID &a, const StreamID &b);
 
+bool parse_range_start(const std::string &text, StreamID &out);
+bool parse_range_end(const std::string &text, StreamID &out);
+
 enum class StreamAddResult {
   Ok,
   InvalidID,
@@ -62,5 +65,6 @@ public:
   const StreamEntryData *find(const std::string &id_text) const;
 
   std::vector<std::pair<std::string, StreamEntryData>>
-  get_range(const std::string &start_id_text) const;
+  get_range(const StreamID &start, const StreamID &end,
+            std::size_t count) const;
 };
