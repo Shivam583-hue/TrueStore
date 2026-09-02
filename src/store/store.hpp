@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <string>
@@ -10,8 +11,16 @@
 
 #include "stream/stream.hpp"
 
+enum class BlockKind {
+  List,
+  Stream,
+};
+
 struct BlockRequest {
+  BlockKind kind;
   std::vector<std::string> keys;
+  std::vector<StreamID> ids;
+  std::size_t count;
   double timeout;
 };
 
@@ -39,6 +48,10 @@ public:
 
   std::optional<std::pair<std::string, std::string>>
   try_blpop(const std::vector<std::string> &keys);
+
+  std::optional<std::string> try_xread(const std::vector<std::string> &keys,
+                                       const std::vector<StreamID> &ids,
+                                       std::size_t count);
 
   std::optional<BlockRequest> take_pending_block();
 };

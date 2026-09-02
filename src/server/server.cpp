@@ -22,10 +22,12 @@
 namespace {
 Store store;
 
-// A client parked on BLPOP, waiting for one of `keys` to receive a value.
 struct Waiter {
   int fd;
+  BlockKind kind;
   std::vector<std::string> keys;
+  std::vector<StreamID> ids;
+  std::size_t count;
   bool has_deadline;
   std::chrono::steady_clock::time_point deadline;
 };
@@ -125,7 +127,6 @@ void Server::run() {
 
   std::unordered_map<int, std::string> buffers;
 
-  // Oldest first, so a pushed value goes to the longest-waiting client.
   std::vector<Waiter> waiters;
 
   auto close_client = [&](int index, int fd) {
@@ -139,15 +140,25 @@ void Server::run() {
 
   auto serve_waiters = [&]() {
     for (std::size_t i = 0; i < waiters.size();) {
-      auto popped = store.try_blpop(waiters[i].keys);
+      const Waiter &waiter = waiters[i];
+      std::string response;
 
-      if (!popped) {
+      if (waiter.kind == BlockKind::List) {
+        if (auto popped = store.try_blpop(waiter.keys)) {
+          response =
+              RespType::Array({popped->first, popped->second}).to_bytes();
+        }
+      } else if (auto reply =
+                     store.try_xread(waiter.keys, waiter.ids, waiter.count)) {
+        response = std::move(*reply);
+      }
+
+      if (response.empty()) {
         ++i;
         continue;
       }
 
-      send_all(waiters[i].fd,
-               RespType::Array({popped->first, popped->second}).to_bytes());
+      send_all(waiter.fd, response);
       waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
     }
   };
@@ -165,7 +176,6 @@ void Server::run() {
     }
   };
 
-  // Sleep until the earliest BLPOP deadline, or indefinitely if nobody waits.
   auto next_timeout = [&]() {
     const auto now = std::chrono::steady_clock::now();
     int timeout = -1;
@@ -290,12 +300,13 @@ void Server::run() {
 
                 buffers[fd].erase(0, consumed);
 
-                // A BLPOP with nothing to pop parks the client rather than
-                // replying; it is answered by serve_waiters/expire_waiters.
                 if (auto block = store.take_pending_block()) {
                   Waiter waiter;
                   waiter.fd = fd;
+                  waiter.kind = block->kind;
                   waiter.keys = std::move(block->keys);
+                  waiter.ids = std::move(block->ids);
+                  waiter.count = block->count;
                   waiter.has_deadline = block->timeout > 0;
 
                   if (waiter.has_deadline) {
@@ -344,7 +355,6 @@ void Server::run() {
       }
     }
 
-    // Values pushed during this cycle may unblock parked clients.
     serve_waiters();
     expire_waiters();
 

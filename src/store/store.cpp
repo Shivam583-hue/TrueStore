@@ -283,7 +283,7 @@ std::string Store::handle_blpop(const std::vector<std::string> &args) {
     return RespType::Array({popped->first, popped->second}).to_bytes();
   }
 
-  pending_block_ = BlockRequest{keys, timeout};
+  pending_block_ = BlockRequest{BlockKind::List, keys, {}, 0, timeout};
   return {};
 }
 
@@ -439,18 +439,60 @@ std::string Store::handle_xrange(const std::vector<std::string> &args) {
   return entries_to_resp(it->second.get_range(start, end, count)).to_bytes();
 }
 
+std::optional<std::string>
+Store::try_xread(const std::vector<std::string> &keys,
+                 const std::vector<StreamID> &ids, std::size_t count) {
+  const StreamID end{std::numeric_limits<std::uint64_t>::max(),
+                     std::numeric_limits<std::uint64_t>::max()};
+
+  std::vector<RespType> replies;
+
+  for (std::size_t n = 0; n < keys.size(); ++n) {
+    auto it = Streams.find(keys[n]);
+
+    if (it == Streams.end()) {
+      continue;
+    }
+
+    StreamID start = ids[n];
+
+    if (!advance_id(start)) {
+      continue;
+    }
+
+    auto entries = it->second.get_range(start, end, count);
+
+    if (entries.empty()) {
+      continue;
+    }
+
+    replies.push_back(RespType::NestedArray(
+        {RespType::BulkString(keys[n]), entries_to_resp(entries)}));
+  }
+
+  if (replies.empty()) {
+    return std::nullopt;
+  }
+
+  return RespType::NestedArray(std::move(replies)).to_bytes();
+}
+
 std::string Store::handle_xread(const std::vector<std::string> &args) {
+  pending_block_.reset();
+
   std::size_t i = 1;
   std::size_t count = 0;
+  bool blocking = false;
+  double timeout = 0;
 
   while (i < args.size() && to_upper(args[i]) != "STREAMS") {
     const std::string option = to_upper(args[i]);
 
-    if (option == "BLOCK") {
-      return RespType::SimpleError("ERR BLOCK is not supported").to_bytes();
+    if (option != "COUNT" && option != "BLOCK") {
+      return RespType::SimpleError("ERR syntax error").to_bytes();
     }
 
-    if (option != "COUNT" || i + 1 >= args.size()) {
+    if (i + 1 >= args.size()) {
       return RespType::SimpleError("ERR syntax error").to_bytes();
     }
 
@@ -460,11 +502,23 @@ std::string Store::handle_xread(const std::vector<std::string> &args) {
       parsed = std::stoll(args[i + 1]);
     } catch (...) {
       return RespType::SimpleError(
-                 "ERR value is not an integer or out of range")
+                 option == "BLOCK"
+                     ? "ERR timeout is not an integer or out of range"
+                     : "ERR value is not an integer or out of range")
           .to_bytes();
     }
 
-    count = parsed > 0 ? static_cast<std::size_t>(parsed) : 0;
+    if (option == "COUNT") {
+      count = parsed > 0 ? static_cast<std::size_t>(parsed) : 0;
+    } else {
+      if (parsed < 0) {
+        return RespType::SimpleError("ERR timeout is negative").to_bytes();
+      }
+
+      blocking = true;
+      timeout = static_cast<double>(parsed) / 1000.0;
+    }
+
     i += 2;
   }
 
@@ -484,53 +538,45 @@ std::string Store::handle_xread(const std::vector<std::string> &args) {
   }
 
   const std::size_t total = remaining / 2;
-  std::vector<RespType> replies;
+
+  std::vector<std::string> keys;
+  std::vector<StreamID> ids;
+  keys.reserve(total);
+  ids.reserve(total);
 
   for (std::size_t n = 0; n < total; ++n) {
     const std::string &key = args[i + n];
     const std::string &id_text = args[i + total + n];
 
-    auto it = Streams.find(key);
-    StreamID after{};
+    StreamID id{};
 
     if (id_text == "$") {
-      if (it == Streams.end() || !it->second.last_id(after)) {
-        continue;
+      auto it = Streams.find(key);
+
+      if (it != Streams.end()) {
+        it->second.last_id(id);
       }
-    } else if (!parse_read_id(id_text, after)) {
+    } else if (!parse_read_id(id_text, id)) {
       return RespType::SimpleError(
                  "ERR Invalid stream ID specified as stream command argument")
           .to_bytes();
     }
 
-    if (it == Streams.end()) {
-      continue;
-    }
-
-    StreamID start = after;
-
-    if (!advance_id(start)) {
-      continue;
-    }
-
-    const StreamID end{std::numeric_limits<std::uint64_t>::max(),
-                       std::numeric_limits<std::uint64_t>::max()};
-
-    auto entries = it->second.get_range(start, end, count);
-
-    if (entries.empty()) {
-      continue;
-    }
-
-    replies.push_back(RespType::NestedArray(
-        {RespType::BulkString(key), entries_to_resp(entries)}));
+    keys.push_back(key);
+    ids.push_back(id);
   }
 
-  if (replies.empty()) {
-    return RespType::NullArray().to_bytes();
+  if (auto reply = try_xread(keys, ids, count)) {
+    return *reply;
   }
 
-  return RespType::NestedArray(std::move(replies)).to_bytes();
+  if (blocking) {
+    pending_block_ = BlockRequest{BlockKind::Stream, std::move(keys),
+                                  std::move(ids), count, timeout};
+    return {};
+  }
+
+  return RespType::NullArray().to_bytes();
 }
 
 std::string Store::handle_lrange(const std::vector<std::string> &args) {
