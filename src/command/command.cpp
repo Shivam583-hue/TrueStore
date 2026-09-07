@@ -73,6 +73,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "INCR")
     return store.handle_incr(args);
 
+  if (command == "INFO")
+    return store.handle_info(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }

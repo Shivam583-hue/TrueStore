@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -68,7 +69,10 @@ bool send_all(int fd, const std::string &payload) {
 }
 } // namespace
 
-Server::Server(int port) : port_(port), server_fd_(-1) {}
+Server::Server(int port, bool is_replica, std::string master_host,
+               int master_port)
+    : port_(port), server_fd_(-1), is_replica_(is_replica),
+      master_host_(std::move(master_host)), master_port_(master_port) {}
 
 Server::~Server() {
   if (server_fd_ >= 0) {
@@ -116,6 +120,8 @@ bool Server::start() {
 }
 
 void Server::run() {
+  store.init(is_replica_, master_host_, master_port_);
+
   constexpr int MAX_FDS = 200;
 
   pollfd fds[MAX_FDS]{};

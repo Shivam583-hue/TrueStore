@@ -31,7 +31,13 @@ class Store {
   std::optional<BlockRequest> pending_block_;
   std::unordered_map<std::string, Stream> Streams;
 
+  bool is_replica_ = false;
+  std::string master_host_;
+  int master_port_ = 0;
+
 public:
+  void init(bool is_replica, std::string master_host, int master_port);
+
   std::string handle_set(const std::vector<std::string> &args);
   std::string handle_get(const std::vector<std::string> &args);
   bool is_expired(const std::string &key);
@@ -45,8 +51,8 @@ public:
   std::string handle_xadd(const std::vector<std::string> &args);
   std::string handle_xrange(const std::vector<std::string> &args);
   std::string handle_xread(const std::vector<std::string> &args);
-
   std::string handle_incr(const std::vector<std::string> &args);
+  std::string handle_info(const std::vector<std::string> &args);
 
   std::optional<std::string> peek(const std::string &key);
 

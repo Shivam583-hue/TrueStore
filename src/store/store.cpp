@@ -680,3 +680,25 @@ std::string Store::handle_lrange(const std::vector<std::string> &args) {
 
   return RespType::Array(std::move(range)).to_bytes();
 }
+
+void Store::init(bool is_replica, std::string master_host, int master_port) {
+  is_replica_ = is_replica;
+  master_host_ = std::move(master_host);
+  master_port_ = master_port;
+}
+
+std::string Store::handle_info(const std::vector<std::string> &args) {
+  (void)args;
+
+  std::string info = "# Replication\r\n";
+
+  if (is_replica_) {
+    info += "role:slave\r\n";
+    info += "master_host:" + master_host_ + "\r\n";
+    info += "master_port:" + std::to_string(master_port_) + "\r\n";
+  } else {
+    info += "role:master\r\n";
+  }
+
+  return RespType::BulkString(info).to_bytes();
+}
