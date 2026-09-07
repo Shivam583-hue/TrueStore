@@ -76,6 +76,12 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "INFO")
     return store.handle_info(args);
 
+  if (command == "REPLCONF")
+    return store.handle_replconf(args);
+
+  if (command == "PSYNC")
+    return store.handle_psync(args);
+
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }

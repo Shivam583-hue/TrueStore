@@ -34,9 +34,14 @@ class Store {
   bool is_replica_ = false;
   std::string master_host_;
   int master_port_ = 0;
+  std::string master_replid_;
+  long long master_repl_offset_ = 0;
 
 public:
   void init(bool is_replica, std::string master_host, int master_port);
+
+  std::string handle_replconf(const std::vector<std::string> &args);
+  std::string handle_psync(const std::vector<std::string> &args);
 
   std::string handle_set(const std::vector<std::string> &args);
   std::string handle_get(const std::vector<std::string> &args);

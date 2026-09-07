@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <random>
 
 template <typename T> const char *get_type() { return "unknown"; }
 template <> const char *get_type<int>() { return "int"; }
@@ -14,6 +15,24 @@ template <> const char *get_type<float>() { return "float"; }
 template <> const char *get_type<char>() { return "char"; }
 template <> const char *get_type<bool>() { return "bool"; }
 template <> const char *get_type<std::string>() { return "string"; }
+
+namespace {
+std::string generate_replid() {
+  static const char *hex_digits = "0123456789abcdef";
+
+  std::random_device rd;
+  std::mt19937_64 gen(rd());
+  std::uniform_int_distribution<int> dist(0, 15);
+
+  std::string id(40, '0');
+
+  for (char &c : id) {
+    c = hex_digits[dist(gen)];
+  }
+
+  return id;
+}
+} // namespace
 
 std::string Store::handle_set(const std::vector<std::string> &args) {
   if (args.size() != 3 && args.size() != 5) {
@@ -685,6 +704,23 @@ void Store::init(bool is_replica, std::string master_host, int master_port) {
   is_replica_ = is_replica;
   master_host_ = std::move(master_host);
   master_port_ = master_port;
+  master_replid_ = generate_replid();
+  master_repl_offset_ = 0;
+}
+
+std::string Store::handle_replconf(const std::vector<std::string> &args) {
+  (void)args;
+
+  return RespType::SimpleString("OK").to_bytes();
+}
+
+std::string Store::handle_psync(const std::vector<std::string> &args) {
+  (void)args;
+
+  std::string reply = "FULLRESYNC " + master_replid_ + " " +
+                       std::to_string(master_repl_offset_);
+
+  return RespType::SimpleString(reply).to_bytes();
 }
 
 std::string Store::handle_info(const std::vector<std::string> &args) {
@@ -699,6 +735,9 @@ std::string Store::handle_info(const std::vector<std::string> &args) {
   } else {
     info += "role:master\r\n";
   }
+
+  info += "master_replid:" + master_replid_ + "\r\n";
+  info += "master_repl_offset:" + std::to_string(master_repl_offset_) + "\r\n";
 
   return RespType::BulkString(info).to_bytes();
 }
