@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstring>
 #include <iostream>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <optional>
 #include <string>
@@ -67,16 +68,43 @@ bool send_all(int fd, const std::string &payload) {
 
   return true;
 }
+
+std::string read_line(int fd) {
+  std::string line;
+  char ch;
+
+  while (true) {
+    ssize_t bytes = recv(fd, &ch, 1, 0);
+
+    if (bytes <= 0) {
+      break;
+    }
+
+    line += ch;
+
+    if (line.size() >= 2 && line[line.size() - 2] == '\r' &&
+        line[line.size() - 1] == '\n') {
+      break;
+    }
+  }
+
+  return line;
+}
 } // namespace
 
 Server::Server(int port, bool is_replica, std::string master_host,
                int master_port)
     : port_(port), server_fd_(-1), is_replica_(is_replica),
-      master_host_(std::move(master_host)), master_port_(master_port) {}
+      master_host_(std::move(master_host)), master_port_(master_port),
+      master_fd_(-1) {}
 
 Server::~Server() {
   if (server_fd_ >= 0) {
     close(server_fd_);
+  }
+
+  if (master_fd_ >= 0) {
+    close(master_fd_);
   }
 }
 
@@ -119,8 +147,106 @@ bool Server::start() {
   return true;
 }
 
+void Server::connect_to_master() {
+  addrinfo hints{};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  addrinfo *resolved = nullptr;
+  std::string port_str = std::to_string(master_port_);
+
+  if (getaddrinfo(master_host_.c_str(), port_str.c_str(), &hints, &resolved) !=
+      0) {
+    std::cerr << "Failed to resolve master host\n";
+    return;
+  }
+
+  int fd = socket(resolved->ai_family, resolved->ai_socktype,
+                   resolved->ai_protocol);
+
+  if (fd < 0) {
+    std::cerr << "Failed to create socket to master\n";
+    freeaddrinfo(resolved);
+    return;
+  }
+
+  if (connect(fd, resolved->ai_addr, resolved->ai_addrlen) < 0) {
+    std::cerr << "Failed to connect to master\n";
+    close(fd);
+    freeaddrinfo(resolved);
+    return;
+  }
+
+  freeaddrinfo(resolved);
+
+  std::string ping = RespType::Array({"PING"}).to_bytes();
+
+  if (!send_all(fd, ping)) {
+    std::cerr << "Failed to send PING to master\n";
+    close(fd);
+    return;
+  }
+
+  if (read_line(fd).empty()) {
+    std::cerr << "No reply to PING from master\n";
+    close(fd);
+    return;
+  }
+
+  std::string replconf_port =
+      RespType::Array({"REPLCONF", "listening-port", std::to_string(port_)})
+          .to_bytes();
+
+  if (!send_all(fd, replconf_port)) {
+    std::cerr << "Failed to send REPLCONF listening-port to master\n";
+    close(fd);
+    return;
+  }
+
+  if (read_line(fd).empty()) {
+    std::cerr << "No reply to REPLCONF listening-port from master\n";
+    close(fd);
+    return;
+  }
+
+  std::string replconf_capa =
+      RespType::Array({"REPLCONF", "capa", "psync2"}).to_bytes();
+
+  if (!send_all(fd, replconf_capa)) {
+    std::cerr << "Failed to send REPLCONF capa to master\n";
+    close(fd);
+    return;
+  }
+
+  if (read_line(fd).empty()) {
+    std::cerr << "No reply to REPLCONF capa from master\n";
+    close(fd);
+    return;
+  }
+
+  std::string psync = RespType::Array({"PSYNC", "?", "-1"}).to_bytes();
+
+  if (!send_all(fd, psync)) {
+    std::cerr << "Failed to send PSYNC to master\n";
+    close(fd);
+    return;
+  }
+
+  if (read_line(fd).empty()) {
+    std::cerr << "No reply to PSYNC from master\n";
+    close(fd);
+    return;
+  }
+
+  master_fd_ = fd;
+}
+
 void Server::run() {
   store.init(is_replica_, master_host_, master_port_);
+
+  if (is_replica_) {
+    connect_to_master();
+  }
 
   constexpr int MAX_FDS = 200;
 
