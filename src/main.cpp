@@ -18,11 +18,24 @@ int main(int argc, char *argv[]) {
     if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
       port = std::atoi(argv[i + 1]);
       ++i;
-    } else if (std::strcmp(argv[i], "--replicaof") == 0 && i + 2 < argc) {
+    } else if (std::strcmp(argv[i], "--replicaof") == 0 && i + 1 < argc) {
       is_replica = true;
-      master_host = argv[i + 1];
-      master_port = std::atoi(argv[i + 2]);
-      i += 2;
+
+      std::string arg = argv[i + 1];
+      std::size_t space = arg.find(' ');
+
+      if (space != std::string::npos) {
+        master_host = arg.substr(0, space);
+        master_port = std::atoi(arg.substr(space + 1).c_str());
+        ++i;
+      } else if (i + 2 < argc) {
+        master_host = arg;
+        master_port = std::atoi(argv[i + 2]);
+        i += 2;
+      } else {
+        master_host = arg;
+        ++i;
+      }
     }
   }
 

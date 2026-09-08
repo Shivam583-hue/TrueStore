@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -89,6 +90,13 @@ std::string read_line(int fd) {
   }
 
   return line;
+}
+
+bool is_write_command(const std::string &command) {
+  static const std::unordered_set<std::string> write_commands = {
+      "SET", "RPUSH", "LPUSH", "LPOP", "INCR", "XADD"};
+
+  return write_commands.count(command) > 0;
 }
 } // namespace
 
@@ -238,6 +246,48 @@ void Server::connect_to_master() {
     return;
   }
 
+  std::string rdb_header = read_line(fd);
+
+  if (rdb_header.empty() || rdb_header[0] != '$') {
+    std::cerr << "Invalid RDB header from master\n";
+    close(fd);
+    return;
+  }
+
+  long long rdb_len;
+
+  try {
+    rdb_len = std::stoll(rdb_header.substr(1));
+  } catch (...) {
+    std::cerr << "Invalid RDB length from master\n";
+    close(fd);
+    return;
+  }
+
+  std::string rdb(static_cast<std::size_t>(rdb_len), '\0');
+  std::size_t rdb_received = 0;
+
+  while (rdb_received < rdb.size()) {
+    ssize_t bytes =
+        recv(fd, rdb.data() + rdb_received, rdb.size() - rdb_received, 0);
+
+    if (bytes <= 0) {
+      std::cerr << "Failed to read RDB from master\n";
+      close(fd);
+      return;
+    }
+
+    rdb_received += static_cast<std::size_t>(bytes);
+  }
+
+  int on = 1;
+
+  if (ioctl(fd, FIONBIO, (char *)&on) < 0) {
+    std::cerr << "Failed to make master connection non-blocking\n";
+    close(fd);
+    return;
+  }
+
   master_fd_ = fd;
 }
 
@@ -257,10 +307,17 @@ void Server::run() {
 
   int nfds = 1;
 
+  if (master_fd_ >= 0) {
+    fds[nfds].fd = master_fd_;
+    fds[nfds].events = POLLIN;
+    ++nfds;
+  }
+
   std::unordered_map<int, std::string> buffers;
   std::unordered_map<int, ClientState> clients;
 
   std::vector<Waiter> waiters;
+  std::vector<int> replica_fds;
 
   auto close_client = [&](int index, int fd) {
     close(fd);
@@ -270,6 +327,21 @@ void Server::run() {
     waiters.erase(std::remove_if(waiters.begin(), waiters.end(),
                                  [fd](const Waiter &w) { return w.fd == fd; }),
                   waiters.end());
+    replica_fds.erase(
+        std::remove(replica_fds.begin(), replica_fds.end(), fd),
+        replica_fds.end());
+  };
+
+  auto propagate_to_replicas = [&](const std::vector<std::string> &args) {
+    std::string encoded = RespType::Array(args).to_bytes();
+
+    for (auto it = replica_fds.begin(); it != replica_fds.end();) {
+      if (!send_all(*it, encoded)) {
+        it = replica_fds.erase(it);
+      } else {
+        ++it;
+      }
+    }
   };
 
   auto serve_waiters = [&]() {
@@ -392,6 +464,72 @@ void Server::run() {
           }
         }
 
+        else if (fd == master_fd_) {
+          bool connection_closed = false;
+
+          while (!connection_closed) {
+            char chunk[4096];
+
+            ssize_t bytes = recv(fd, chunk, sizeof(chunk), 0);
+
+            if (bytes > 0) {
+              buffers[fd].append(chunk, static_cast<std::size_t>(bytes));
+
+              while (true) {
+                std::optional<std::pair<std::vector<std::string>, std::size_t>>
+                    command;
+
+                try {
+                  command = parse_command(buffers[fd]);
+                } catch (const RespError &e) {
+                  std::cerr << "Protocol error from master: " << e.what()
+                            << '\n';
+                  close_client(i, fd);
+                  master_fd_ = -1;
+                  connection_closed = true;
+                  break;
+                }
+
+                if (!command) {
+                  break;
+                }
+
+                auto &[args, consumed] = *command;
+
+                try {
+                  handle_command(args, store, clients[fd]);
+                } catch (const std::exception &e) {
+                  std::cerr << "Command error from master: " << e.what()
+                            << '\n';
+                }
+
+                buffers[fd].erase(0, consumed);
+              }
+            }
+
+            else if (bytes == 0) {
+              close_client(i, fd);
+              master_fd_ = -1;
+              connection_closed = true;
+            }
+
+            else {
+              if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+              }
+
+              if (errno == EINTR)
+                continue;
+
+              std::cerr << "recv() from master failed\n";
+
+              close_client(i, fd);
+              master_fd_ = -1;
+              connection_closed = true;
+            }
+          }
+        }
+
         else {
           bool connection_closed = false;
 
@@ -422,6 +560,8 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
+                bool was_in_multi = clients[fd].in_multi;
+
                 std::string response;
 
                 try {
@@ -433,6 +573,20 @@ void Server::run() {
                 }
 
                 buffers[fd].erase(0, consumed);
+
+                if (!args.empty()) {
+                  std::string command_name = to_upper(args[0]);
+
+                  if (command_name == "PSYNC" &&
+                      std::find(replica_fds.begin(), replica_fds.end(), fd) ==
+                          replica_fds.end()) {
+                    replica_fds.push_back(fd);
+                  }
+
+                  if (!was_in_multi && is_write_command(command_name)) {
+                    propagate_to_replicas(args);
+                  }
+                }
 
                 if (auto block = store.take_pending_block()) {
                   Waiter waiter;
