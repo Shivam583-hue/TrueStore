@@ -32,6 +32,23 @@ std::string generate_replid() {
 
   return id;
 }
+
+std::string hex_to_bytes(const std::string &hex) {
+  std::string bytes;
+  bytes.reserve(hex.size() / 2);
+
+  for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+    bytes.push_back(
+        static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+  }
+
+  return bytes;
+}
+
+const std::string kEmptyRdbHex =
+    "524544495330303131fa0972656469732d76657205372e322e30fa0a7265646973"
+    "2d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c410"
+    "00fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 } // namespace
 
 std::string Store::handle_set(const std::vector<std::string> &args) {
@@ -717,10 +734,15 @@ std::string Store::handle_replconf(const std::vector<std::string> &args) {
 std::string Store::handle_psync(const std::vector<std::string> &args) {
   (void)args;
 
-  std::string reply = "FULLRESYNC " + master_replid_ + " " +
-                       std::to_string(master_repl_offset_);
+  std::string fullresync = "FULLRESYNC " + master_replid_ + " " +
+                            std::to_string(master_repl_offset_);
 
-  return RespType::SimpleString(reply).to_bytes();
+  std::string reply = RespType::SimpleString(fullresync).to_bytes();
+
+  std::string rdb = hex_to_bytes(kEmptyRdbHex);
+  reply += "$" + std::to_string(rdb.size()) + "\r\n" + rdb;
+
+  return reply;
 }
 
 std::string Store::handle_info(const std::vector<std::string> &args) {
