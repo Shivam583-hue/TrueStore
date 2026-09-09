@@ -18,7 +18,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -33,6 +32,7 @@ struct Waiter {
   std::size_t count;
   bool has_deadline;
   std::chrono::steady_clock::time_point deadline;
+  long long target_offset = 0;
 };
 
 bool send_all(int fd, const std::string &payload) {
@@ -92,19 +92,13 @@ std::string read_line(int fd) {
   return line;
 }
 
-bool is_write_command(const std::string &command) {
-  static const std::unordered_set<std::string> write_commands = {
-      "SET", "RPUSH", "LPUSH", "LPOP", "INCR", "XADD"};
-
-  return write_commands.count(command) > 0;
-}
 } // namespace
 
 Server::Server(int port, bool is_replica, std::string master_host,
                int master_port)
     : port_(port), server_fd_(-1), is_replica_(is_replica),
       master_host_(std::move(master_host)), master_port_(master_port),
-      master_fd_(-1) {}
+      master_fd_(-1), master_initial_offset_(0) {}
 
 Server::~Server() {
   if (server_fd_ >= 0) {
@@ -240,10 +234,22 @@ void Server::connect_to_master() {
     return;
   }
 
-  if (read_line(fd).empty()) {
+  std::string fullresync = read_line(fd);
+
+  if (fullresync.empty()) {
     std::cerr << "No reply to PSYNC from master\n";
     close(fd);
     return;
+  }
+
+  // +FULLRESYNC <replid> <offset> -- the replication stream we are about to
+  // read starts at <offset>, so our ACKs have to be counted from there.
+  if (std::size_t space = fullresync.rfind(' '); space != std::string::npos) {
+    try {
+      master_initial_offset_ = std::stoll(fullresync.substr(space + 1));
+    } catch (...) {
+      master_initial_offset_ = 0;
+    }
   }
 
   std::string rdb_header = read_line(fd);
@@ -317,7 +323,8 @@ void Server::run() {
   std::unordered_map<int, ClientState> clients;
 
   std::vector<Waiter> waiters;
-  std::vector<int> replica_fds;
+  std::unordered_map<int, long long> replicas;
+  long long replica_offset = master_initial_offset_;
 
   auto close_client = [&](int index, int fd) {
     close(fd);
@@ -327,26 +334,56 @@ void Server::run() {
     waiters.erase(std::remove_if(waiters.begin(), waiters.end(),
                                  [fd](const Waiter &w) { return w.fd == fd; }),
                   waiters.end());
-    replica_fds.erase(
-        std::remove(replica_fds.begin(), replica_fds.end(), fd),
-        replica_fds.end());
+    replicas.erase(fd);
   };
 
-  auto propagate_to_replicas = [&](const std::vector<std::string> &args) {
-    std::string encoded = RespType::Array(args).to_bytes();
+  // Every byte written to the replication stream advances master_repl_offset_,
+  // including the REPLCONF GETACK * that WAIT sends. Skipping those would let a
+  // replica's stale ACK satisfy a later WAIT's target offset.
+  auto send_to_replicas = [&](const std::string &encoded) {
+    store.bump_repl_offset(static_cast<long long>(encoded.size()));
 
-    for (auto it = replica_fds.begin(); it != replica_fds.end();) {
-      if (!send_all(*it, encoded)) {
-        it = replica_fds.erase(it);
+    for (auto it = replicas.begin(); it != replicas.end();) {
+      if (!send_all(it->first, encoded)) {
+        it = replicas.erase(it);
       } else {
         ++it;
       }
     }
   };
 
+  auto propagate_to_replicas = [&](const std::vector<std::string> &args) {
+    send_to_replicas(RespType::Array(args).to_bytes());
+  };
+
+  auto count_acked = [&](long long target_offset) {
+    std::size_t acked = 0;
+
+    for (const auto &[rfd, roffset] : replicas) {
+      if (roffset >= target_offset) {
+        ++acked;
+      }
+    }
+
+    return acked;
+  };
+
   auto serve_waiters = [&]() {
     for (std::size_t i = 0; i < waiters.size();) {
       const Waiter &waiter = waiters[i];
+
+      if (waiter.kind == BlockKind::Wait) {
+        if (count_acked(waiter.target_offset) >= waiter.count) {
+          send_all(waiter.fd, RespType::Integer(static_cast<long long>(
+                                   count_acked(waiter.target_offset)))
+                                   .to_bytes());
+          waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
+        } else {
+          ++i;
+        }
+        continue;
+      }
+
       std::string response;
 
       if (waiter.kind == BlockKind::List) {
@@ -374,7 +411,14 @@ void Server::run() {
 
     for (std::size_t i = 0; i < waiters.size();) {
       if (waiters[i].has_deadline && now >= waiters[i].deadline) {
-        send_all(waiters[i].fd, RespType::NullArray().to_bytes());
+        if (waiters[i].kind == BlockKind::Wait) {
+          send_all(waiters[i].fd,
+                    RespType::Integer(static_cast<long long>(
+                                          count_acked(waiters[i].target_offset)))
+                        .to_bytes());
+        } else {
+          send_all(waiters[i].fd, RespType::NullArray().to_bytes());
+        }
         waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
       } else {
         ++i;
@@ -496,6 +540,22 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
+                replica_offset += static_cast<long long>(consumed);
+                buffers[fd].erase(0, consumed);
+
+                bool is_getack = args.size() >= 2 &&
+                                  to_upper(args[0]) == "REPLCONF" &&
+                                  to_upper(args[1]) == "GETACK";
+
+                if (is_getack) {
+                  std::string ack =
+                      RespType::Array({"REPLCONF", "ACK",
+                                        std::to_string(replica_offset)})
+                          .to_bytes();
+                  send_all(fd, ack);
+                  continue;
+                }
+
                 try {
                   handle_command(args, store, clients[fd]);
                 } catch (const std::exception &e) {
@@ -503,7 +563,9 @@ void Server::run() {
                             << '\n';
                 }
 
-                buffers[fd].erase(0, consumed);
+                // A replica applies the stream, it does not re-propagate it.
+                store.take_pending_propagations();
+                store.take_pending_block();
               }
             }
 
@@ -560,6 +622,22 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
+                buffers[fd].erase(0, consumed);
+
+                if (!args.empty() && to_upper(args[0]) == "REPLCONF" &&
+                    args.size() >= 3 && to_upper(args[1]) == "ACK") {
+                  auto it = replicas.find(fd);
+
+                  if (it != replicas.end()) {
+                    try {
+                      it->second = std::stoll(args[2]);
+                    } catch (...) {
+                    }
+                  }
+
+                  continue;
+                }
+
                 bool was_in_multi = clients[fd].in_multi;
 
                 std::string response;
@@ -572,40 +650,77 @@ void Server::run() {
                       RespType::SimpleError("ERR internal error").to_bytes();
                 }
 
-                buffers[fd].erase(0, consumed);
-
                 if (!args.empty()) {
                   std::string command_name = to_upper(args[0]);
 
-                  if (command_name == "PSYNC" &&
-                      std::find(replica_fds.begin(), replica_fds.end(), fd) ==
-                          replica_fds.end()) {
-                    replica_fds.push_back(fd);
+                  if (command_name == "PSYNC") {
+                    // FULLRESYNC told the replica the stream starts here, so
+                    // that is the offset it is already caught up to.
+                    replicas.emplace(fd, store.repl_offset());
                   }
 
-                  if (!was_in_multi && is_write_command(command_name)) {
+                  if (!was_in_multi && is_write_command(command_name) &&
+                      (response.empty() || response[0] != '-')) {
                     propagate_to_replicas(args);
                   }
                 }
 
+                // Writes performed inside EXEC propagate individually.
+                for (const std::vector<std::string> &queued :
+                     store.take_pending_propagations()) {
+                  propagate_to_replicas(queued);
+                }
+
                 if (auto block = store.take_pending_block()) {
-                  Waiter waiter;
-                  waiter.fd = fd;
-                  waiter.kind = block->kind;
-                  waiter.keys = std::move(block->keys);
-                  waiter.ids = std::move(block->ids);
-                  waiter.count = block->count;
-                  waiter.has_deadline = block->timeout > 0;
+                  if (block->kind == BlockKind::Wait) {
+                    std::size_t acked = count_acked(block->target_offset);
 
-                  if (waiter.has_deadline) {
-                    waiter.deadline =
-                        std::chrono::steady_clock::now() +
-                        std::chrono::duration_cast<
-                            std::chrono::steady_clock::duration>(
-                            std::chrono::duration<double>(block->timeout));
+                    if (replicas.empty() || acked >= block->count) {
+                      send_all(fd, RespType::Integer(
+                                       static_cast<long long>(acked))
+                                       .to_bytes());
+                    } else {
+                      send_to_replicas(
+                          RespType::Array({"REPLCONF", "GETACK", "*"})
+                              .to_bytes());
+
+                      Waiter waiter;
+                      waiter.fd = fd;
+                      waiter.kind = BlockKind::Wait;
+                      waiter.count = block->count;
+                      waiter.target_offset = block->target_offset;
+                      waiter.has_deadline = block->timeout > 0;
+
+                      if (waiter.has_deadline) {
+                        waiter.deadline =
+                            std::chrono::steady_clock::now() +
+                            std::chrono::duration_cast<
+                                std::chrono::steady_clock::duration>(
+                                std::chrono::duration<double>(
+                                    block->timeout));
+                      }
+
+                      waiters.push_back(std::move(waiter));
+                    }
+                  } else {
+                    Waiter waiter;
+                    waiter.fd = fd;
+                    waiter.kind = block->kind;
+                    waiter.keys = std::move(block->keys);
+                    waiter.ids = std::move(block->ids);
+                    waiter.count = block->count;
+                    waiter.has_deadline = block->timeout > 0;
+
+                    if (waiter.has_deadline) {
+                      waiter.deadline =
+                          std::chrono::steady_clock::now() +
+                          std::chrono::duration_cast<
+                              std::chrono::steady_clock::duration>(
+                              std::chrono::duration<double>(block->timeout));
+                    }
+
+                    waiters.push_back(std::move(waiter));
                   }
-
-                  waiters.push_back(std::move(waiter));
                 } else if (!response.empty()) {
                   send_all(fd, response);
                 }

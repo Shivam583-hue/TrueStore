@@ -14,6 +14,7 @@
 enum class BlockKind {
   List,
   Stream,
+  Wait,
 };
 
 struct BlockRequest {
@@ -22,6 +23,7 @@ struct BlockRequest {
   std::vector<StreamID> ids;
   std::size_t count;
   double timeout;
+  long long target_offset = 0;
 };
 
 class Store {
@@ -29,6 +31,7 @@ class Store {
   std::map<std::string, std::chrono::steady_clock::time_point> Expirations;
   std::unordered_map<std::string, std::vector<std::string>> DynamicVector;
   std::optional<BlockRequest> pending_block_;
+  std::vector<std::vector<std::string>> pending_propagations_;
   std::unordered_map<std::string, Stream> Streams;
 
   bool is_replica_ = false;
@@ -42,6 +45,18 @@ public:
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);
+  std::string handle_wait(const std::vector<std::string> &args);
+
+  long long repl_offset() const { return master_repl_offset_; }
+  void bump_repl_offset(long long bytes) { master_repl_offset_ += bytes; }
+
+  void queue_propagation(std::vector<std::string> args) {
+    pending_propagations_.push_back(std::move(args));
+  }
+
+  std::vector<std::vector<std::string>> take_pending_propagations() {
+    return std::exchange(pending_propagations_, {});
+  }
 
   std::string handle_set(const std::vector<std::string> &args);
   std::string handle_get(const std::vector<std::string> &args);

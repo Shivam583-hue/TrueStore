@@ -20,4 +20,5 @@ private:
   std::string master_host_;
   int master_port_;
   int master_fd_;
+  long long master_initial_offset_;
 };

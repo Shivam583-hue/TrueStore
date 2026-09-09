@@ -731,6 +731,35 @@ std::string Store::handle_replconf(const std::vector<std::string> &args) {
   return RespType::SimpleString("OK").to_bytes();
 }
 
+std::string Store::handle_wait(const std::vector<std::string> &args) {
+  if (args.size() != 3) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'wait' command")
+        .to_bytes();
+  }
+
+  long long numreplicas;
+  long long timeout_ms;
+
+  try {
+    numreplicas = std::stoll(args[1]);
+    timeout_ms = std::stoll(args[2]);
+  } catch (...) {
+    return RespType::SimpleError("ERR value is not an integer or out of range")
+        .to_bytes();
+  }
+
+  BlockRequest block;
+  block.kind = BlockKind::Wait;
+  block.count = numreplicas > 0 ? static_cast<std::size_t>(numreplicas) : 0;
+  block.timeout = timeout_ms / 1000.0;
+  block.target_offset = master_repl_offset_;
+
+  pending_block_ = block;
+
+  return {};
+}
+
 std::string Store::handle_psync(const std::vector<std::string> &args) {
   (void)args;
 

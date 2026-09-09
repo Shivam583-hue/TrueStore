@@ -14,5 +14,6 @@ struct ClientState {
 };
 
 std::string to_upper(std::string value);
+bool is_write_command(const std::string &command);
 std::string handle_command(const std::vector<std::string> &args, Store &store,
                            ClientState &client);

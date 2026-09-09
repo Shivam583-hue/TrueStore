@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cstddef>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -14,6 +15,21 @@ std::string to_upper(std::string value) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   }
   return value;
+}
+
+bool is_write_command(const std::string &command) {
+  static const std::unordered_set<std::string> write_commands = {
+      "SET",    "SETNX",  "SETEX",     "PSETEX", "GETSET", "GETDEL",
+      "APPEND", "SETRANGE", "MSET",    "MSETNX", "DEL",    "UNLINK",
+      "INCR",   "DECR",   "INCRBY",    "DECRBY", "INCRBYFLOAT",
+      "EXPIRE", "PEXPIRE", "EXPIREAT", "PEXPIREAT", "PERSIST",
+      "RPUSH",  "LPUSH",  "RPUSHX",    "LPUSHX", "LPOP",   "RPOP",
+      "LSET",   "LREM",   "LTRIM",     "LINSERT",
+      "XADD",   "XDEL",   "XTRIM",
+      "SADD",   "SREM",   "HSET",      "HDEL",   "ZADD",   "ZREM",
+      "RENAME", "COPY",   "FLUSHALL",  "FLUSHDB"};
+
+  return write_commands.count(command) > 0;
 }
 
 namespace {
@@ -81,6 +97,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
 
   if (command == "PSYNC")
     return store.handle_psync(args);
+
+  if (command == "WAIT")
+    return store.handle_wait(args);
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
@@ -178,6 +197,11 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
 
       if (store.take_pending_block()) {
         result = RespType::NullArray().to_bytes();
+      }
+
+      if (is_write_command(to_upper(queued_args[0])) &&
+          (result.empty() || result[0] != '-')) {
+        store.queue_propagation(queued_args);
       }
 
       reply += result;
