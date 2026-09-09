@@ -49,6 +49,7 @@ public:
 
   long long repl_offset() const { return master_repl_offset_; }
   void bump_repl_offset(long long bytes) { master_repl_offset_ += bytes; }
+  void set_repl_offset(long long value) { master_repl_offset_ = value; }
 
   void queue_propagation(std::vector<std::string> args) {
     pending_propagations_.push_back(std::move(args));

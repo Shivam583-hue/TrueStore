@@ -540,21 +540,25 @@ void Server::run() {
 
                 auto &[args, consumed] = *command;
 
-                replica_offset += static_cast<long long>(consumed);
                 buffers[fd].erase(0, consumed);
 
                 bool is_getack = args.size() >= 2 &&
                                   to_upper(args[0]) == "REPLCONF" &&
                                   to_upper(args[1]) == "GETACK";
 
+                // The ACK reports the offset processed *before* this
+                // GETACK; the GETACK itself only counts towards later ACKs.
                 if (is_getack) {
                   std::string ack =
-                      RespType::Array({"REPLCONF", "ACK",
-                                        std::to_string(replica_offset)})
+                      RespType::Array(
+                          {"REPLCONF", "ACK", std::to_string(replica_offset)})
                           .to_bytes();
                   send_all(fd, ack);
+                  replica_offset += static_cast<long long>(consumed);
                   continue;
                 }
+
+                replica_offset += static_cast<long long>(consumed);
 
                 try {
                   handle_command(args, store, clients[fd]);
@@ -567,6 +571,9 @@ void Server::run() {
                 store.take_pending_propagations();
                 store.take_pending_block();
               }
+
+              // What INFO reports on a replica is how far it has consumed.
+              store.set_repl_offset(replica_offset);
             }
 
             else if (bytes == 0) {
