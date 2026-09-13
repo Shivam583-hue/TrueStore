@@ -11,6 +11,7 @@ find_package(Threads REQUIRED)
 add_executable(server
   src/main.cpp
   src/server/server.cpp
+  src/net/socket.cpp
   src/resp/resp.cpp
   src/store/store.cpp
   src/store/strings.cpp

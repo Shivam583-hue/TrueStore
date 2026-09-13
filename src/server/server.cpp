@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "command/command.hpp"
+#include "net/socket.hpp"
 #include "resp/resp.hpp"
 #include "store/store.hpp"
 
@@ -13,7 +14,6 @@
 #include <netinet/in.h>
 #include <optional>
 #include <string>
-#include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -34,64 +34,6 @@ struct Waiter {
   std::chrono::steady_clock::time_point deadline;
   long long target_offset = 0;
 };
-
-bool send_all(int fd, const std::string &payload) {
-  std::size_t offset = 0;
-
-  while (offset < payload.size()) {
-    ssize_t sent =
-        send(fd, payload.data() + offset, payload.size() - offset, 0);
-
-    if (sent > 0) {
-      offset += static_cast<std::size_t>(sent);
-      continue;
-    }
-
-    if (sent < 0 && errno == EINTR) {
-      continue;
-    }
-
-    if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-      pollfd writable{};
-      writable.fd = fd;
-      writable.events = POLLOUT;
-
-      if (poll(&writable, 1, 1000) <= 0) {
-        return false;
-      }
-
-      continue;
-    }
-
-    std::cerr << "send() failed\n";
-    return false;
-  }
-
-  return true;
-}
-
-std::string read_line(int fd) {
-  std::string line;
-  char ch;
-
-  while (true) {
-    ssize_t bytes = recv(fd, &ch, 1, 0);
-
-    if (bytes <= 0) {
-      break;
-    }
-
-    line += ch;
-
-    if (line.size() >= 2 && line[line.size() - 2] == '\r' &&
-        line[line.size() - 1] == '\n') {
-      break;
-    }
-  }
-
-  return line;
-}
-
 } // namespace
 
 Server::Server(int port, bool is_replica, std::string master_host,
@@ -130,8 +72,7 @@ bool Server::start() {
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(port_);
 
-  int on = 1;
-  if (ioctl(server_fd_, FIONBIO, (char *)&on) < 0) {
+  if (!set_nonblocking(server_fd_)) {
     std::cerr << "ioctl() failed\n";
     return false;
   }
@@ -287,9 +228,7 @@ void Server::connect_to_master() {
     rdb_received += static_cast<std::size_t>(bytes);
   }
 
-  int on = 1;
-
-  if (ioctl(fd, FIONBIO, (char *)&on) < 0) {
+  if (!set_nonblocking(fd)) {
     std::cerr << "Failed to make master connection non-blocking\n";
     close(fd);
     return;
@@ -487,9 +426,7 @@ void Server::run() {
               break;
             }
 
-            int on = 1;
-
-            if (ioctl(client_fd, FIONBIO, (char *)&on) < 0) {
+            if (!set_nonblocking(client_fd)) {
               std::cerr << "Failed to make client non-blocking\n";
               close(client_fd);
               continue;
