@@ -11,6 +11,7 @@ struct ClientState {
   bool in_multi = false;
   std::vector<std::vector<std::string>> queued;
   std::vector<std::pair<std::string, std::optional<std::string>>> watched;
+  long long repl_offset = 0;
 };
 
 std::string to_upper(std::string value);

@@ -23,7 +23,6 @@ struct BlockRequest {
   std::vector<StreamID> ids;
   std::size_t count;
   double timeout;
-  long long target_offset = 0;
 };
 
 class Store {
@@ -40,8 +39,12 @@ class Store {
   std::string master_replid_;
   long long master_repl_offset_ = 0;
 
+  std::string dir_;
+  std::string dbfilename_;
+
 public:
-  void init(bool is_replica, std::string master_host, int master_port);
+  void init(bool is_replica, std::string master_host, int master_port,
+            std::string dir, std::string dbfilename);
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);
@@ -73,6 +76,7 @@ public:
   std::string handle_xrange(const std::vector<std::string> &args);
   std::string handle_xread(const std::vector<std::string> &args);
   std::string handle_incr(const std::vector<std::string> &args);
+  std::string handle_config_get(const std::vector<std::string> &args);
   std::string handle_info(const std::vector<std::string> &args);
 
   std::optional<std::string> peek(const std::string &key);

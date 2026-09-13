@@ -19,15 +19,14 @@ std::string to_upper(std::string value) {
 
 bool is_write_command(const std::string &command) {
   static const std::unordered_set<std::string> write_commands = {
-      "SET",    "SETNX",  "SETEX",     "PSETEX", "GETSET", "GETDEL",
-      "APPEND", "SETRANGE", "MSET",    "MSETNX", "DEL",    "UNLINK",
-      "INCR",   "DECR",   "INCRBY",    "DECRBY", "INCRBYFLOAT",
-      "EXPIRE", "PEXPIRE", "EXPIREAT", "PEXPIREAT", "PERSIST",
-      "RPUSH",  "LPUSH",  "RPUSHX",    "LPUSHX", "LPOP",   "RPOP",
-      "LSET",   "LREM",   "LTRIM",     "LINSERT",
-      "XADD",   "XDEL",   "XTRIM",
-      "SADD",   "SREM",   "HSET",      "HDEL",   "ZADD",   "ZREM",
-      "RENAME", "COPY",   "FLUSHALL",  "FLUSHDB"};
+      "SET",     "SETNX",    "SETEX",     "PSETEX",  "GETSET",      "GETDEL",
+      "APPEND",  "SETRANGE", "MSET",      "MSETNX",  "DEL",         "UNLINK",
+      "INCR",    "DECR",     "INCRBY",    "DECRBY",  "INCRBYFLOAT", "EXPIRE",
+      "PEXPIRE", "EXPIREAT", "PEXPIREAT", "PERSIST", "RPUSH",       "LPUSH",
+      "RPUSHX",  "LPUSHX",   "LPOP",      "RPOP",    "LSET",        "LREM",
+      "LTRIM",   "LINSERT",  "XADD",      "XDEL",    "XTRIM",       "SADD",
+      "SREM",    "HSET",     "HDEL",      "ZADD",    "ZREM",        "RENAME",
+      "COPY",    "FLUSHALL", "FLUSHDB"};
 
   return write_commands.count(command) > 0;
 }
@@ -100,6 +99,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
 
   if (command == "WAIT")
     return store.handle_wait(args);
+
+  if (command == "CONFIG")
+    return store.handle_config_get(args);
 
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();

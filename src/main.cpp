@@ -13,10 +13,18 @@ int main(int argc, char *argv[]) {
   bool is_replica = false;
   std::string master_host;
   int master_port = 0;
+  std::string dir;
+  std::string dbfilename;
 
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
       port = std::atoi(argv[i + 1]);
+      ++i;
+    } else if (std::strcmp(argv[i], "--dir") == 0 && i + 1 < argc) {
+      dir = argv[i + 1];
+      ++i;
+    } else if (std::strcmp(argv[i], "--dbfilename") == 0 && i + 1 < argc) {
+      dbfilename = argv[i + 1];
       ++i;
     } else if (std::strcmp(argv[i], "--replicaof") == 0 && i + 1 < argc) {
       is_replica = true;
@@ -39,7 +47,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  Server server(port, is_replica, master_host, master_port);
+  Server server(port, is_replica, master_host, master_port, dir, dbfilename);
   if (!server.start()) {
     return 1;
   }

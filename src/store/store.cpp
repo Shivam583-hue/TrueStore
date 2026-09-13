@@ -717,10 +717,13 @@ std::string Store::handle_lrange(const std::vector<std::string> &args) {
   return RespType::Array(std::move(range)).to_bytes();
 }
 
-void Store::init(bool is_replica, std::string master_host, int master_port) {
+void Store::init(bool is_replica, std::string master_host, int master_port,
+                 std::string dir, std::string dbfilename) {
   is_replica_ = is_replica;
   master_host_ = std::move(master_host);
   master_port_ = master_port;
+  dir_ = std::move(dir);
+  dbfilename_ = std::move(dbfilename);
   master_replid_ = generate_replid();
   master_repl_offset_ = 0;
 }
@@ -753,7 +756,6 @@ std::string Store::handle_wait(const std::vector<std::string> &args) {
   block.kind = BlockKind::Wait;
   block.count = numreplicas > 0 ? static_cast<std::size_t>(numreplicas) : 0;
   block.timeout = timeout_ms / 1000.0;
-  block.target_offset = master_repl_offset_;
 
   pending_block_ = block;
 
@@ -764,7 +766,7 @@ std::string Store::handle_psync(const std::vector<std::string> &args) {
   (void)args;
 
   std::string fullresync = "FULLRESYNC " + master_replid_ + " " +
-                            std::to_string(master_repl_offset_);
+                           std::to_string(master_repl_offset_);
 
   std::string reply = RespType::SimpleString(fullresync).to_bytes();
 
@@ -772,6 +774,26 @@ std::string Store::handle_psync(const std::vector<std::string> &args) {
   reply += "$" + std::to_string(rdb.size()) + "\r\n" + rdb;
 
   return reply;
+}
+
+std::string Store::handle_config_get(const std::vector<std::string> &args) {
+  if (args.size() != 3 || to_upper(args[1]) != "GET") {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'config|get' command")
+        .to_bytes();
+  }
+
+  std::string param = to_upper(args[2]);
+
+  if (param == "DIR") {
+    return RespType::Array({"dir", dir_}).to_bytes();
+  }
+
+  if (param == "DBFILENAME") {
+    return RespType::Array({"dbfilename", dbfilename_}).to_bytes();
+  }
+
+  return RespType::Array(std::vector<std::string>{}).to_bytes();
 }
 
 std::string Store::handle_info(const std::vector<std::string> &args) {

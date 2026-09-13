@@ -95,10 +95,11 @@ std::string read_line(int fd) {
 } // namespace
 
 Server::Server(int port, bool is_replica, std::string master_host,
-               int master_port)
+               int master_port, std::string dir, std::string dbfilename)
     : port_(port), server_fd_(-1), is_replica_(is_replica),
       master_host_(std::move(master_host)), master_port_(master_port),
-      master_fd_(-1), master_initial_offset_(0) {}
+      master_fd_(-1), master_initial_offset_(0), dir_(std::move(dir)),
+      dbfilename_(std::move(dbfilename)) {}
 
 Server::~Server() {
   if (server_fd_ >= 0) {
@@ -163,8 +164,8 @@ void Server::connect_to_master() {
     return;
   }
 
-  int fd = socket(resolved->ai_family, resolved->ai_socktype,
-                   resolved->ai_protocol);
+  int fd =
+      socket(resolved->ai_family, resolved->ai_socktype, resolved->ai_protocol);
 
   if (fd < 0) {
     std::cerr << "Failed to create socket to master\n";
@@ -298,7 +299,7 @@ void Server::connect_to_master() {
 }
 
 void Server::run() {
-  store.init(is_replica_, master_host_, master_port_);
+  store.init(is_replica_, master_host_, master_port_, dir_, dbfilename_);
 
   if (is_replica_) {
     connect_to_master();
@@ -337,9 +338,6 @@ void Server::run() {
     replicas.erase(fd);
   };
 
-  // Every byte written to the replication stream advances master_repl_offset_,
-  // including the REPLCONF GETACK * that WAIT sends. Skipping those would let a
-  // replica's stale ACK satisfy a later WAIT's target offset.
   auto send_to_replicas = [&](const std::string &encoded) {
     store.bump_repl_offset(static_cast<long long>(encoded.size()));
 
@@ -374,9 +372,10 @@ void Server::run() {
 
       if (waiter.kind == BlockKind::Wait) {
         if (count_acked(waiter.target_offset) >= waiter.count) {
-          send_all(waiter.fd, RespType::Integer(static_cast<long long>(
-                                   count_acked(waiter.target_offset)))
-                                   .to_bytes());
+          send_all(waiter.fd,
+                   RespType::Integer(static_cast<long long>(
+                                         count_acked(waiter.target_offset)))
+                       .to_bytes());
           waiters.erase(waiters.begin() + static_cast<std::ptrdiff_t>(i));
         } else {
           ++i;
@@ -413,9 +412,9 @@ void Server::run() {
       if (waiters[i].has_deadline && now >= waiters[i].deadline) {
         if (waiters[i].kind == BlockKind::Wait) {
           send_all(waiters[i].fd,
-                    RespType::Integer(static_cast<long long>(
-                                          count_acked(waiters[i].target_offset)))
-                        .to_bytes());
+                   RespType::Integer(static_cast<long long>(
+                                         count_acked(waiters[i].target_offset)))
+                       .to_bytes());
         } else {
           send_all(waiters[i].fd, RespType::NullArray().to_bytes());
         }
@@ -543,8 +542,8 @@ void Server::run() {
                 buffers[fd].erase(0, consumed);
 
                 bool is_getack = args.size() >= 2 &&
-                                  to_upper(args[0]) == "REPLCONF" &&
-                                  to_upper(args[1]) == "GETACK";
+                                 to_upper(args[0]) == "REPLCONF" &&
+                                 to_upper(args[1]) == "GETACK";
 
                 // The ACK reports the offset processed *before* this
                 // GETACK; the GETACK itself only counts towards later ACKs.
@@ -669,6 +668,7 @@ void Server::run() {
                   if (!was_in_multi && is_write_command(command_name) &&
                       (response.empty() || response[0] != '-')) {
                     propagate_to_replicas(args);
+                    clients[fd].repl_offset = store.repl_offset();
                   }
                 }
 
@@ -676,16 +676,21 @@ void Server::run() {
                 for (const std::vector<std::string> &queued :
                      store.take_pending_propagations()) {
                   propagate_to_replicas(queued);
+                  clients[fd].repl_offset = store.repl_offset();
                 }
 
                 if (auto block = store.take_pending_block()) {
                   if (block->kind == BlockKind::Wait) {
-                    std::size_t acked = count_acked(block->target_offset);
+                    // Like Redis, WAIT only covers this client's own writes,
+                    // so one that has written nothing is satisfied by every
+                    // connected replica.
+                    long long target_offset = clients[fd].repl_offset;
+                    std::size_t acked = count_acked(target_offset);
 
                     if (replicas.empty() || acked >= block->count) {
-                      send_all(fd, RespType::Integer(
-                                       static_cast<long long>(acked))
-                                       .to_bytes());
+                      send_all(fd,
+                               RespType::Integer(static_cast<long long>(acked))
+                                   .to_bytes());
                     } else {
                       send_to_replicas(
                           RespType::Array({"REPLCONF", "GETACK", "*"})
@@ -695,7 +700,7 @@ void Server::run() {
                       waiter.fd = fd;
                       waiter.kind = BlockKind::Wait;
                       waiter.count = block->count;
-                      waiter.target_offset = block->target_offset;
+                      waiter.target_offset = target_offset;
                       waiter.has_deadline = block->timeout > 0;
 
                       if (waiter.has_deadline) {
@@ -703,8 +708,7 @@ void Server::run() {
                             std::chrono::steady_clock::now() +
                             std::chrono::duration_cast<
                                 std::chrono::steady_clock::duration>(
-                                std::chrono::duration<double>(
-                                    block->timeout));
+                                std::chrono::duration<double>(block->timeout));
                       }
 
                       waiters.push_back(std::move(waiter));

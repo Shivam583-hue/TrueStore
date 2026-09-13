@@ -5,7 +5,8 @@
 class Server {
 public:
   explicit Server(int port, bool is_replica, std::string master_host = "",
-                  int master_port = 0);
+                  int master_port = 0, std::string dir = "",
+                  std::string dbfilename = "");
   ~Server();
 
   bool start();
@@ -21,4 +22,6 @@ private:
   int master_port_;
   int master_fd_;
   long long master_initial_offset_;
+  std::string dir_;
+  std::string dbfilename_;
 };
