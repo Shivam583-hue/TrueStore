@@ -120,6 +120,7 @@ std::vector<RdbEntry> load_rdb(const std::string &path) {
   }
 
   std::vector<RdbEntry> entries;
+  std::optional<std::uint64_t> expire_at_ms;
 
   while (!reader.done()) {
     std::uint8_t opcode = reader.byte();
@@ -140,17 +141,18 @@ std::vector<RdbEntry> load_rdb(const std::string &path) {
       break;
 
     case 0xFC:
-      reader.little_endian(8);
+      expire_at_ms = reader.little_endian(8);
       break;
 
     case 0xFD:
-      reader.little_endian(4);
+      expire_at_ms = reader.little_endian(4) * 1000;
       break;
 
     case 0x00: {
       RdbEntry entry;
       entry.key = reader.string();
       entry.value = reader.string();
+      entry.expire_at_ms = std::exchange(expire_at_ms, std::nullopt);
       entries.push_back(std::move(entry));
       break;
     }

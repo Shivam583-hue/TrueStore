@@ -4,7 +4,24 @@
 #include <fnmatch.h>
 
 void Store::load_entries(const std::vector<RdbEntry> &entries) {
+  const auto system_now = std::chrono::system_clock::now();
+  const auto steady_now = std::chrono::steady_clock::now();
+
   for (const RdbEntry &entry : entries) {
+    if (entry.expire_at_ms) {
+      const std::chrono::system_clock::time_point expire_at{
+          std::chrono::milliseconds(*entry.expire_at_ms)};
+
+      if (expire_at <= system_now) {
+        continue;
+      }
+
+      Expirations[entry.key] =
+          steady_now +
+          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              expire_at - system_now);
+    }
+
     Storage[entry.key] = entry.value;
   }
 }
