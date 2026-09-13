@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "config/config.hpp"
+#include "rdb/rdb.hpp"
 #include "stream/stream.hpp"
 
 enum class BlockKind {
@@ -45,6 +46,7 @@ class Store {
 
 public:
   void init(const Config &config);
+  void load_entries(const std::vector<RdbEntry> &entries);
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);
@@ -72,6 +74,7 @@ public:
   std::string handle_lpop(const std::vector<std::string> &args);
   std::string handle_blpop(const std::vector<std::string> &args);
   std::string handle_type(const std::vector<std::string> &args);
+  std::string handle_keys(const std::vector<std::string> &args);
   std::string handle_xadd(const std::vector<std::string> &args);
   std::string handle_xrange(const std::vector<std::string> &args);
   std::string handle_xread(const std::vector<std::string> &args);

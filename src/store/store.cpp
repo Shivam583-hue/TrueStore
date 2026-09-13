@@ -1,6 +1,50 @@
 #include "store/store.hpp"
 #include "resp/resp.hpp"
 
+#include <fnmatch.h>
+
+void Store::load_entries(const std::vector<RdbEntry> &entries) {
+  for (const RdbEntry &entry : entries) {
+    Storage[entry.key] = entry.value;
+  }
+}
+
+std::string Store::handle_keys(const std::vector<std::string> &args) {
+  if (args.size() != 2) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'keys' command")
+        .to_bytes();
+  }
+
+  std::vector<std::string> candidates;
+
+  for (const auto &[key, value] : Storage) {
+    candidates.push_back(key);
+  }
+
+  for (const auto &[key, list] : DynamicVector) {
+    candidates.push_back(key);
+  }
+
+  for (const auto &[key, stream] : Streams) {
+    candidates.push_back(key);
+  }
+
+  std::vector<std::string> matched;
+
+  for (const std::string &key : candidates) {
+    if (is_expired(key)) {
+      continue;
+    }
+
+    if (fnmatch(args[1].c_str(), key.c_str(), 0) == 0) {
+      matched.push_back(key);
+    }
+  }
+
+  return RespType::Array(std::move(matched)).to_bytes();
+}
+
 bool Store::is_expired(const std::string &key) {
   auto it = Expirations.find(key);
 

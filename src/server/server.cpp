@@ -1,6 +1,7 @@
 #include "server.hpp"
 #include "command/command.hpp"
 #include "net/socket.hpp"
+#include "rdb/rdb.hpp"
 #include "resp/resp.hpp"
 #include "store/store.hpp"
 
@@ -134,10 +135,9 @@ void Server::connect_to_master() {
     return;
   }
 
-  std::string replconf_port =
-      RespType::Array(
-          {"REPLCONF", "listening-port", std::to_string(config_.port)})
-          .to_bytes();
+  std::string replconf_port = RespType::Array({"REPLCONF", "listening-port",
+                                               std::to_string(config_.port)})
+                                  .to_bytes();
 
   if (!send_all(fd, replconf_port)) {
     std::cerr << "Failed to send REPLCONF listening-port to master\n";
@@ -182,8 +182,6 @@ void Server::connect_to_master() {
     return;
   }
 
-  // +FULLRESYNC <replid> <offset> -- the replication stream we are about to
-  // read starts at <offset>, so our ACKs have to be counted from there.
   if (std::size_t space = fullresync.rfind(' '); space != std::string::npos) {
     try {
       master_initial_offset_ = std::stoll(fullresync.substr(space + 1));
@@ -237,6 +235,14 @@ void Server::connect_to_master() {
 
 void Server::run() {
   store.init(config_);
+
+  if (!config_.dir.empty() && !config_.dbfilename.empty()) {
+    try {
+      store.load_entries(load_rdb(config_.dir + "/" + config_.dbfilename));
+    } catch (const std::exception &e) {
+      std::cerr << "Failed to load RDB file: " << e.what() << '\n';
+    }
+  }
 
   if (config_.is_replica) {
     connect_to_master();
@@ -480,8 +486,6 @@ void Server::run() {
                                  to_upper(args[0]) == "REPLCONF" &&
                                  to_upper(args[1]) == "GETACK";
 
-                // The ACK reports the offset processed *before* this
-                // GETACK; the GETACK itself only counts towards later ACKs.
                 if (is_getack) {
                   std::string ack =
                       RespType::Array(
@@ -501,12 +505,10 @@ void Server::run() {
                             << '\n';
                 }
 
-                // A replica applies the stream, it does not re-propagate it.
                 store.take_pending_propagations();
                 store.take_pending_block();
               }
 
-              // What INFO reports on a replica is how far it has consumed.
               store.set_repl_offset(replica_offset);
             }
 
@@ -595,8 +597,6 @@ void Server::run() {
                   std::string command_name = to_upper(args[0]);
 
                   if (command_name == "PSYNC") {
-                    // FULLRESYNC told the replica the stream starts here, so
-                    // that is the offset it is already caught up to.
                     replicas.emplace(fd, store.repl_offset());
                   }
 
@@ -607,7 +607,6 @@ void Server::run() {
                   }
                 }
 
-                // Writes performed inside EXEC propagate individually.
                 for (const std::vector<std::string> &queued :
                      store.take_pending_propagations()) {
                   propagate_to_replicas(queued);
@@ -616,9 +615,6 @@ void Server::run() {
 
                 if (auto block = store.take_pending_block()) {
                   if (block->kind == BlockKind::Wait) {
-                    // Like Redis, WAIT only covers this client's own writes,
-                    // so one that has written nothing is satisfied by every
-                    // connected replica.
                     long long target_offset = clients[fd].repl_offset;
                     std::size_t acked = count_acked(target_offset);
 

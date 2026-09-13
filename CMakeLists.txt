@@ -12,6 +12,7 @@ add_library(truestore_core STATIC
   src/config/config.cpp
   src/server/server.cpp
   src/net/socket.cpp
+  src/rdb/rdb.cpp
   src/resp/resp.cpp
   src/store/store.cpp
   src/store/strings.cpp

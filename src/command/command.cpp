@@ -76,6 +76,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "TYPE")
     return store.handle_type(args);
 
+  if (command == "KEYS")
+    return store.handle_keys(args);
+
   if (command == "XADD")
     return store.handle_xadd(args);
 
