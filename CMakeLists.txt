@@ -14,10 +14,10 @@ add_executable(server
   src/resp/resp.cpp
   src/store/store.cpp
   src/command/command.cpp
-  src/rax/rax.c
   src/stream/stream.cpp
+  third_party/rax/rax.c
 )
-target_include_directories(server PRIVATE src)
+target_include_directories(server PRIVATE src third_party)
 target_link_libraries(server PRIVATE Threads::Threads)
 
 add_executable(client
