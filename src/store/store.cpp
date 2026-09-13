@@ -8,14 +8,6 @@
 #include <limits>
 #include <random>
 
-template <typename T> const char *get_type() { return "unknown"; }
-template <> const char *get_type<int>() { return "int"; }
-template <> const char *get_type<double>() { return "double"; }
-template <> const char *get_type<float>() { return "float"; }
-template <> const char *get_type<char>() { return "char"; }
-template <> const char *get_type<bool>() { return "bool"; }
-template <> const char *get_type<std::string>() { return "string"; }
-
 namespace {
 std::string generate_replid() {
   static const char *hex_digits = "0123456789abcdef";
@@ -344,20 +336,17 @@ std::string Store::handle_type(const std::vector<std::string> &args) {
         .to_bytes();
   }
 
-  auto key = args[1];
-  std::string n = "none";
+  const std::string &key = args[1];
 
   if (Streams.find(key) != Streams.end()) {
     return RespType::SimpleString("stream").to_bytes();
   }
 
-  auto it = Storage.find(key);
-  if (it == Storage.end()) {
-    return RespType::SimpleString(n).to_bytes();
+  if (Storage.find(key) == Storage.end()) {
+    return RespType::SimpleString("none").to_bytes();
   }
 
-  auto val = it->second;
-  return RespType::SimpleString(get_type<decltype(val)>()).to_bytes();
+  return RespType::SimpleString("string").to_bytes();
 }
 
 std::string Store::handle_xadd(const std::vector<std::string> &args) {
