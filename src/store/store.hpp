@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "config/config.hpp"
 #include "stream/stream.hpp"
 
 enum class BlockKind {
@@ -43,8 +44,7 @@ class Store {
   std::string dbfilename_;
 
 public:
-  void init(bool is_replica, std::string master_host, int master_port,
-            std::string dir, std::string dbfilename);
+  void init(const Config &config);
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);

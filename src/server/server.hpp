@@ -1,12 +1,10 @@
 #pragma once
 
-#include <string>
+#include "config/config.hpp"
 
 class Server {
 public:
-  explicit Server(int port, bool is_replica, std::string master_host = "",
-                  int master_port = 0, std::string dir = "",
-                  std::string dbfilename = "");
+  explicit Server(Config config);
   ~Server();
 
   bool start();
@@ -15,13 +13,8 @@ public:
 private:
   void connect_to_master();
 
-  int port_;
+  Config config_;
   int server_fd_;
-  bool is_replica_;
-  std::string master_host_;
-  int master_port_;
   int master_fd_;
   long long master_initial_offset_;
-  std::string dir_;
-  std::string dbfilename_;
 };

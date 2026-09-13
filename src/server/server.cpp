@@ -36,12 +36,9 @@ struct Waiter {
 };
 } // namespace
 
-Server::Server(int port, bool is_replica, std::string master_host,
-               int master_port, std::string dir, std::string dbfilename)
-    : port_(port), server_fd_(-1), is_replica_(is_replica),
-      master_host_(std::move(master_host)), master_port_(master_port),
-      master_fd_(-1), master_initial_offset_(0), dir_(std::move(dir)),
-      dbfilename_(std::move(dbfilename)) {}
+Server::Server(Config config)
+    : config_(std::move(config)), server_fd_(-1), master_fd_(-1),
+      master_initial_offset_(0) {}
 
 Server::~Server() {
   if (server_fd_ >= 0) {
@@ -70,7 +67,7 @@ bool Server::start() {
   sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(port_);
+  server_addr.sin_port = htons(config_.port);
 
   if (!set_nonblocking(server_fd_)) {
     std::cerr << "ioctl() failed\n";
@@ -97,10 +94,10 @@ void Server::connect_to_master() {
   hints.ai_socktype = SOCK_STREAM;
 
   addrinfo *resolved = nullptr;
-  std::string port_str = std::to_string(master_port_);
+  std::string port_str = std::to_string(config_.master_port);
 
-  if (getaddrinfo(master_host_.c_str(), port_str.c_str(), &hints, &resolved) !=
-      0) {
+  if (getaddrinfo(config_.master_host.c_str(), port_str.c_str(), &hints,
+                  &resolved) != 0) {
     std::cerr << "Failed to resolve master host\n";
     return;
   }
@@ -138,7 +135,8 @@ void Server::connect_to_master() {
   }
 
   std::string replconf_port =
-      RespType::Array({"REPLCONF", "listening-port", std::to_string(port_)})
+      RespType::Array(
+          {"REPLCONF", "listening-port", std::to_string(config_.port)})
           .to_bytes();
 
   if (!send_all(fd, replconf_port)) {
@@ -238,9 +236,9 @@ void Server::connect_to_master() {
 }
 
 void Server::run() {
-  store.init(is_replica_, master_host_, master_port_, dir_, dbfilename_);
+  store.init(config_);
 
-  if (is_replica_) {
+  if (config_.is_replica) {
     connect_to_master();
   }
 

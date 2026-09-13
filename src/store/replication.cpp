@@ -38,13 +38,12 @@ const std::string kEmptyRdbHex =
     "00fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 } // namespace
 
-void Store::init(bool is_replica, std::string master_host, int master_port,
-                 std::string dir, std::string dbfilename) {
-  is_replica_ = is_replica;
-  master_host_ = std::move(master_host);
-  master_port_ = master_port;
-  dir_ = std::move(dir);
-  dbfilename_ = std::move(dbfilename);
+void Store::init(const Config &config) {
+  is_replica_ = config.is_replica;
+  master_host_ = config.master_host;
+  master_port_ = config.master_port;
+  dir_ = config.dir;
+  dbfilename_ = config.dbfilename;
   master_replid_ = generate_replid();
   master_repl_offset_ = 0;
 }
