@@ -13,6 +13,11 @@ add_executable(server
   src/server/server.cpp
   src/resp/resp.cpp
   src/store/store.cpp
+  src/store/strings.cpp
+  src/store/lists.cpp
+  src/store/streams.cpp
+  src/store/replication.cpp
+  src/store/config.cpp
   src/command/command.cpp
   src/stream/stream.cpp
   third_party/rax/rax.c
