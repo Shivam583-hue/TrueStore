@@ -8,8 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
 
-add_executable(server
-  src/main.cpp
+add_library(truestore_core STATIC
   src/config/config.cpp
   src/server/server.cpp
   src/net/socket.cpp
@@ -24,8 +23,11 @@ add_executable(server
   src/stream/stream.cpp
   third_party/rax/rax.c
 )
-target_include_directories(server PRIVATE src third_party)
-target_link_libraries(server PRIVATE Threads::Threads)
+target_include_directories(truestore_core PUBLIC src third_party)
+target_link_libraries(truestore_core PUBLIC Threads::Threads)
+
+add_executable(server src/main.cpp)
+target_link_libraries(server PRIVATE truestore_core)
 
 add_executable(client
   src/client_main.cpp
