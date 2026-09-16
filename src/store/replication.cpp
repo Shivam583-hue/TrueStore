@@ -39,6 +39,11 @@ const std::string kEmptyRdbHex =
 } // namespace
 
 void Store::init(const Config &config) {
+  appendonly_ = config.appendonly;
+  appenddirname_ = config.appenddirname;
+  appendfilename_ = config.appendfilename;
+  appendfsync_ = config.appendfsync;
+
   is_replica_ = config.is_replica;
   master_host_ = config.master_host;
   master_port_ = config.master_port;

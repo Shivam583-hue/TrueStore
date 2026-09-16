@@ -34,6 +34,19 @@ Config parse_args(int argc, char *argv[]) {
         config.master_host = arg;
         ++i;
       }
+    } else if (std::strcmp(argv[i], "--appendonly") == 0 && i + 1 < argc) {
+      if (argv[i + 1] == "yes")
+        config.appendonly = "yes";
+      ++i;
+    } else if (std::strcmp(argv[i], "--appenddirname") == 0 && i + 1 < argc) {
+      config.appenddirname = argv[i + 1];
+      ++i;
+    } else if (std::strcmp(argv[i], "--appendfilename") == 0 && i + 1 < argc) {
+      config.appendfilename = argv[i + 1];
+      ++i;
+    } else if (std::strcmp(argv[i], "--appendfsync") == 0 && i + 1 < argc) {
+      config.appendfsync = argv[i + 1];
+      ++i;
     }
   }
 

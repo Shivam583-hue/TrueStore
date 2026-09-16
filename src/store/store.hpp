@@ -44,6 +44,11 @@ class Store {
   std::string dir_;
   std::string dbfilename_;
 
+  std::string appendonly_;
+  std::string appenddirname_;
+  std::string appendfilename_;
+  std::string appendfsync_;
+
 public:
   void init(const Config &config);
   void load_entries(const std::vector<RdbEntry> &entries);
