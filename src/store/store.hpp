@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -12,6 +13,8 @@
 #include "config/config.hpp"
 #include "rdb/rdb.hpp"
 #include "stream/stream.hpp"
+
+struct ClientState;
 
 enum class BlockKind {
   List,
@@ -34,6 +37,8 @@ class Store {
   std::optional<BlockRequest> pending_block_;
   std::vector<std::vector<std::string>> pending_propagations_;
   std::unordered_map<std::string, Stream> Streams;
+  std::unordered_map<std::string, std::set<int>> subscribers_;
+  std::vector<std::pair<int, std::string>> pending_messages_;
 
   bool is_replica_ = false;
   std::string master_host_;
@@ -86,6 +91,15 @@ public:
   std::string handle_incr(const std::vector<std::string> &args);
   std::string handle_config_get(const std::vector<std::string> &args);
   std::string handle_info(const std::vector<std::string> &args);
+  std::string handle_subscribe(const std::vector<std::string> &args,
+                               ClientState &client);
+  std::string handle_unsubscribe(const std::vector<std::string> &args,
+                                 ClientState &client);
+  std::string handle_publish(const std::vector<std::string> &args);
+  void remove_subscriber(int fd);
+  std::vector<std::pair<int, std::string>> take_pending_messages() {
+    return std::exchange(pending_messages_, {});
+  }
 
   std::optional<std::string> peek(const std::string &key);
 

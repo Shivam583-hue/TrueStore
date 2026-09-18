@@ -2,9 +2,11 @@
 #include "server/server.hpp"
 
 #include <exception>
+#include <csignal>
 #include <iostream>
 
 int main(int argc, char *argv[]) {
+  std::signal(SIGPIPE, SIG_IGN);
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 

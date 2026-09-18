@@ -33,12 +33,30 @@ bool is_write_command(const std::string &command) {
 
 namespace {
 std::string dispatch_command(const std::vector<std::string> &args,
-                             Store &store) {
+                             Store &store, ClientState &client) {
   std::string command = to_upper(args[0]);
 
   if (command == "PING") {
-    return RespType::SimpleString("PONG").to_bytes();
+    if (args.size() > 2) {
+      return RespType::SimpleError(
+                 "ERR wrong number of arguments for 'ping' command")
+          .to_bytes();
+    }
+    if (!client.subscriptions.empty()) {
+      return RespType::Array({"pong", args.size() == 2 ? args[1] : ""}).to_bytes();
+    }
+    return args.size() == 2 ? RespType::BulkString(args[1]).to_bytes()
+                            : RespType::SimpleString("PONG").to_bytes();
   }
+
+  if (command == "SUBSCRIBE")
+    return store.handle_subscribe(args, client);
+
+  if (command == "UNSUBSCRIBE")
+    return store.handle_unsubscribe(args, client);
+
+  if (command == "PUBLISH")
+    return store.handle_publish(args);
 
   if (command == "ECHO") {
     if (args.size() != 2) {
@@ -119,6 +137,33 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
 
   std::string command = to_upper(args[0]);
 
+  if (!client.subscriptions.empty()) {
+    static const std::unordered_set<std::string> allowed = {
+        "SUBSCRIBE", "UNSUBSCRIBE", "PSUBSCRIBE", "PUNSUBSCRIBE",
+        "PING", "QUIT", "RESET"};
+    if (!allowed.contains(command)) {
+      std::string name = args[0];
+      for (char &c : name) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      }
+      return RespType::SimpleError("ERR Can't execute '" + name +
+                                   "' in subscribed mode").to_bytes();
+    }
+  }
+
+  if (command == "QUIT" || command == "RESET") {
+    if (args.size() != 1) {
+      return RespType::SimpleError("ERR wrong number of arguments").to_bytes();
+    }
+    store.remove_subscriber(client.fd);
+    client.subscriptions.clear();
+    client.in_multi = false;
+    client.queued.clear();
+    client.watched.clear();
+    client.close_after_reply = command == "QUIT";
+    return RespType::SimpleString(command == "QUIT" ? "OK" : "RESET").to_bytes();
+  }
+
   if (command == "MULTI") {
     if (args.size() != 1) {
       return RespType::SimpleError(
@@ -198,7 +243,7 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
     std::string reply = "*" + std::to_string(queued.size()) + "\r\n";
 
     for (const std::vector<std::string> &queued_args : queued) {
-      std::string result = dispatch_command(queued_args, store);
+      std::string result = dispatch_command(queued_args, store, client);
 
       if (store.take_pending_block()) {
         result = RespType::NullArray().to_bytes();
@@ -220,5 +265,5 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
     return RespType::SimpleString("QUEUED").to_bytes();
   }
 
-  return dispatch_command(args, store);
+  return dispatch_command(args, store, client);
 }

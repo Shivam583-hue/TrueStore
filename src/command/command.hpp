@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -8,6 +9,9 @@
 #include "store/store.hpp"
 
 struct ClientState {
+  int fd = -1;
+  std::set<std::string> subscriptions;
+  bool close_after_reply = false;
   bool in_multi = false;
   std::vector<std::vector<std::string>> queued;
   std::vector<std::pair<std::string, std::optional<std::string>>> watched;

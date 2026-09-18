@@ -21,6 +21,7 @@ add_library(truestore_core STATIC
   src/store/streams.cpp
   src/store/replication.cpp
   src/store/config.cpp
+  src/store/pubsub.cpp
   src/command/command.cpp
   src/stream/stream.cpp
   third_party/rax/rax.c

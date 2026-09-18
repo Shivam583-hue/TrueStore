@@ -278,6 +278,7 @@ void Server::run() {
   long long replica_offset = master_initial_offset_;
 
   auto close_client = [&](int index, int fd) {
+    store.remove_subscriber(fd);
     close(fd);
     fds[index].fd = -1;
     buffers.erase(fd);
@@ -286,6 +287,19 @@ void Server::run() {
                                  [fd](const Waiter &w) { return w.fd == fd; }),
                   waiters.end());
     replicas.erase(fd);
+  };
+
+  auto deliver_messages = [&]() {
+    for (const auto &[recipient, message] : store.take_pending_messages()) {
+      for (int index = 1; index < nfds; ++index) {
+        if (fds[index].fd == recipient) {
+          if (!send_all(recipient, message)) {
+            close_client(index, recipient);
+          }
+          break;
+        }
+      }
+    }
   };
 
   auto send_to_replicas = [&](const std::string &encoded) {
@@ -457,6 +471,7 @@ void Server::run() {
 
             fds[nfds].fd = client_fd;
             fds[nfds].events = POLLIN;
+            clients[client_fd].fd = client_fd;
             ++nfds;
           }
         }
@@ -700,7 +715,22 @@ void Server::run() {
                     waiters.push_back(std::move(waiter));
                   }
                 } else if (!response.empty()) {
-                  send_all(fd, response);
+                  if (!send_all(fd, response)) {
+                    close_client(i, fd);
+                    connection_closed = true;
+                    break;
+                  }
+                }
+
+                deliver_messages();
+                if (fds[i].fd < 0) {
+                  connection_closed = true;
+                  break;
+                }
+                if (clients[fd].close_after_reply) {
+                  close_client(i, fd);
+                  connection_closed = true;
+                  break;
                 }
               }
             }
