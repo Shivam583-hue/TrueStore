@@ -34,6 +34,8 @@ class Store {
   struct SortedSet {
     std::unordered_map<std::string, double> scores;
     std::set<std::pair<double, std::string>> ordered;
+
+    bool add(double score, const std::string &member);
   };
 
   std::map<std::string, std::string> Storage;
@@ -106,6 +108,10 @@ public:
   std::string handle_zcard(const std::vector<std::string> &args);
   std::string handle_zscore(const std::vector<std::string> &args);
   std::string handle_zrem(const std::vector<std::string> &args);
+  std::string handle_geoadd(const std::vector<std::string> &args);
+  std::string handle_geopos(const std::vector<std::string> &args);
+  std::string handle_geodist(const std::vector<std::string> &args);
+  std::string handle_geosearch(const std::vector<std::string> &args);
   std::string handle_subscribe(const std::vector<std::string> &args,
                                ClientState &client);
   std::string handle_unsubscribe(const std::vector<std::string> &args,

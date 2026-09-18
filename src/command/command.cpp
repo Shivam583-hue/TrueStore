@@ -26,7 +26,7 @@ bool is_write_command(const std::string &command) {
       "RPUSHX",  "LPUSHX",   "LPOP",      "RPOP",    "LSET",        "LREM",
       "LTRIM",   "LINSERT",  "XADD",      "XDEL",    "XTRIM",       "SADD",
       "SREM",    "HSET",     "HDEL",      "ZADD",    "ZREM",        "RENAME",
-      "COPY",    "FLUSHALL", "FLUSHDB"};
+      "COPY",    "FLUSHALL", "FLUSHDB",   "GEOADD"};
 
   return write_commands.count(command) > 0;
 }
@@ -75,6 +75,18 @@ std::string dispatch_command(const std::vector<std::string> &args,
 
   if (command == "ZREM")
     return store.handle_zrem(args);
+
+  if (command == "GEOADD")
+    return store.handle_geoadd(args);
+
+  if (command == "GEOPOS")
+    return store.handle_geopos(args);
+
+  if (command == "GEODIST")
+    return store.handle_geodist(args);
+
+  if (command == "GEOSEARCH")
+    return store.handle_geosearch(args);
 
   static const std::unordered_set<std::string> incompatible_with_sorted_set = {
       "GET", "INCR", "RPUSH", "LPUSH", "LLEN", "LRANGE", "LPOP",

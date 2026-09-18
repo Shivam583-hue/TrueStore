@@ -55,6 +55,16 @@ std::string format_score(double score) {
 }
 } // namespace
 
+bool Store::SortedSet::add(double score, const std::string &member) {
+  auto [it, inserted] = scores.try_emplace(member, score);
+  if (!inserted) {
+    ordered.erase({it->second, member});
+    it->second = score;
+  }
+  ordered.emplace(score, member);
+  return inserted;
+}
+
 bool Store::wrong_sorted_set_type(const std::string &key) {
   const auto type = key_type(key);
   return type != "none" && type != "zset";
@@ -80,14 +90,7 @@ std::string Store::handle_zadd(const std::vector<std::string> &args) {
   auto &set = sorted_sets_[args[1]];
   long long added = 0;
   for (const auto &[score, member] : entries) {
-    auto [it, inserted] = set.scores.try_emplace(member, score);
-    if (inserted) {
-      ++added;
-    } else {
-      set.ordered.erase({it->second, member});
-      it->second = score;
-    }
-    set.ordered.emplace(score, member);
+    added += set.add(score, member);
   }
   return RespType::Integer(added).to_bytes();
 }
