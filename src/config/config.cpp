@@ -35,8 +35,7 @@ Config parse_args(int argc, char *argv[]) {
         ++i;
       }
     } else if (std::strcmp(argv[i], "--appendonly") == 0 && i + 1 < argc) {
-      if (std::strcmp(argv[i + 1], "yes") == 0)
-        config.appendonly = "yes";
+      config.appendonly = argv[i + 1];
       ++i;
     } else if (std::strcmp(argv[i], "--appenddirname") == 0 && i + 1 < argc) {
       config.appenddirname = argv[i + 1];

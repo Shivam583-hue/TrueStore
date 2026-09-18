@@ -1,4 +1,5 @@
 #include "aof/aof.hpp"
+#include "command/command.hpp"
 #include "resp/resp.hpp"
 
 #include <algorithm>
@@ -85,7 +86,7 @@ void Aof::open(const Config &config) {
   if (!std::filesystem::exists(manifest_path)) {
     const auto filename = config.appendfilename + ".1.incr.aof";
     std::ofstream initial_file(directory / filename,
-                               std::ios::binary | std::ios::app);
+                              std::ios::binary | std::ios::app);
     initial_file.close();
     if (!initial_file) {
       throw std::runtime_error("Failed to create incremental AOF file");
@@ -111,7 +112,37 @@ void Aof::open(const Config &config) {
   fd_ = ::open(files_.back().c_str(), O_WRONLY | O_APPEND);
   if (fd_ < 0) {
     throw std::system_error(errno, std::generic_category(),
-                            "Failed to open incremental AOF file");
+                           "Failed to open incremental AOF file");
+  }
+}
+
+void Aof::replay(Store &store) const {
+  ClientState client;
+  for (const auto &file : files_) {
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+      throw std::runtime_error("Failed to read AOF: " + file.string());
+    }
+
+    std::string buffer;
+    char chunk[4096];
+    while (input.read(chunk, sizeof(chunk)) || input.gcount() > 0) {
+      buffer.append(chunk, static_cast<std::size_t>(input.gcount()));
+      while (auto command = parse_command(buffer)) {
+        const auto &[args, consumed] = *command;
+        const auto response = handle_command(args, store, client);
+        const auto blocked = store.take_pending_block();
+        store.take_pending_propagations();
+        if (blocked || (!response.empty() && response[0] == '-')) {
+          throw std::runtime_error("Failed to replay AOF command in " +
+                                   file.string() + ": " + response);
+        }
+        buffer.erase(0, consumed);
+      }
+    }
+    if (input.bad() || !buffer.empty() || client.in_multi) {
+      throw std::runtime_error("Incomplete AOF: " + file.string());
+    }
   }
 }
 
@@ -138,13 +169,14 @@ void Aof::append_transaction(
 void Aof::write(const std::string &bytes) {
   std::size_t offset = 0;
   while (offset < bytes.size()) {
-    const auto written = ::write(fd_, bytes.data() + offset, bytes.size() - offset);
+    const auto written =
+        ::write(fd_, bytes.data() + offset, bytes.size() - offset);
     if (written < 0) {
       if (errno == EINTR) {
         continue;
       }
       throw std::system_error(errno, std::generic_category(),
-                              "Failed to write AOF");
+                             "Failed to write AOF");
     }
     if (written == 0) {
       throw std::runtime_error("Failed to complete AOF write");
@@ -167,7 +199,7 @@ void Aof::sync_if_due() {
   while (::fsync(fd_) < 0) {
     if (errno != EINTR) {
       throw std::system_error(errno, std::generic_category(),
-                              "Failed to sync AOF");
+                             "Failed to sync AOF");
     }
   }
   dirty_ = false;

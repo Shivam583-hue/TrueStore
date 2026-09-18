@@ -140,6 +140,7 @@ Store::try_blpop(const std::vector<std::string> &keys) {
       DynamicVector.erase(it);
     }
 
+    queue_propagation({"LPOP", key});
     return std::make_pair(key, std::move(value));
   }
 

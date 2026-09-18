@@ -81,15 +81,26 @@ bool Server::start() {
     return false;
   }
 
-  if (listen(server_fd_, 5) < 0) {
-    std::cerr << "listen() failed\n";
+  store.init(config_);
+  try {
+    aof_.open(config_);
+    aof_.replay(store);
+  } catch (const std::exception &e) {
+    std::cerr << "Failed to initialize AOF: " << e.what() << '\n';
     return false;
   }
 
-  try {
-    aof_.open(config_);
-  } catch (const std::exception &e) {
-    std::cerr << "Failed to initialize AOF: " << e.what() << '\n';
+  if (config_.appendonly != "yes" && !config_.dir.empty() &&
+      !config_.dbfilename.empty()) {
+    try {
+      store.load_entries(load_rdb(config_.dir + "/" + config_.dbfilename));
+    } catch (const std::exception &e) {
+      std::cerr << "Failed to load RDB file: " << e.what() << '\n';
+    }
+  }
+
+  if (listen(server_fd_, 5) < 0) {
+    std::cerr << "listen() failed\n";
     return false;
   }
   return true;
@@ -240,16 +251,6 @@ void Server::connect_to_master() {
 }
 
 void Server::run() {
-  store.init(config_);
-
-  if (!config_.dir.empty() && !config_.dbfilename.empty()) {
-    try {
-      store.load_entries(load_rdb(config_.dir + "/" + config_.dbfilename));
-    } catch (const std::exception &e) {
-      std::cerr << "Failed to load RDB file: " << e.what() << '\n';
-    }
-  }
-
   if (config_.is_replica) {
     connect_to_master();
   }
@@ -336,6 +337,11 @@ void Server::run() {
 
       if (waiter.kind == BlockKind::List) {
         if (auto popped = store.try_blpop(waiter.keys)) {
+          for (const auto &args : store.take_pending_propagations()) {
+            aof_.append(args);
+            propagate_to_replicas(args);
+            clients[waiter.fd].repl_offset = store.repl_offset();
+          }
           response =
               RespType::Array({popped->first, popped->second}).to_bytes();
         }
@@ -520,7 +526,14 @@ void Server::run() {
                     (response.empty() || response[0] != '-')) {
                   aof_.append(args);
                 }
-                aof_.append_transaction(store.take_pending_propagations());
+                const auto pending = store.take_pending_propagations();
+                if (was_in_multi) {
+                  aof_.append_transaction(pending);
+                } else {
+                  for (const auto &queued : pending) {
+                    aof_.append(queued);
+                  }
+                }
                 store.take_pending_block();
               }
 
@@ -624,7 +637,13 @@ void Server::run() {
                 }
 
                 const auto pending = store.take_pending_propagations();
-                aof_.append_transaction(pending);
+                if (was_in_multi) {
+                  aof_.append_transaction(pending);
+                } else {
+                  for (const auto &queued : pending) {
+                    aof_.append(queued);
+                  }
+                }
                 for (const std::vector<std::string> &queued : pending) {
                   propagate_to_replicas(queued);
                   clients[fd].repl_offset = store.repl_offset();

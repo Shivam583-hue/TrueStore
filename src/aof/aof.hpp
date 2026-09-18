@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+class Store;
+
 class Aof {
 public:
   Aof() = default;
@@ -15,6 +17,7 @@ public:
   Aof &operator=(const Aof &) = delete;
 
   void open(const Config &config);
+  void replay(Store &store) const;
   void append(const std::vector<std::string> &args);
   void append_transaction(const std::vector<std::vector<std::string>> &commands);
   void sync_if_due();
