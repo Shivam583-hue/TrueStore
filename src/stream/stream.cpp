@@ -71,7 +71,7 @@ std::uint64_t read_u64_be(const unsigned char *source) {
   return value;
 }
 
-} // namespace
+}
 
 namespace {
 
@@ -98,7 +98,7 @@ bool parse_range_bound(const std::string &text, std::uint64_t default_sequence,
   return true;
 }
 
-} // namespace
+}
 
 bool parse_range_start(const std::string &text, StreamID &out) {
   if (text == "-") {

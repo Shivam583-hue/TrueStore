@@ -1,5 +1,3 @@
-"""Run with: python3 tests/sorted_sets_test.py /path/to/server"""
-
 import pathlib
 import random
 import tempfile

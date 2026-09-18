@@ -1,5 +1,3 @@
-"""RESP socket helpers shared by the integration tests."""
-
 import pathlib
 import socket
 import subprocess

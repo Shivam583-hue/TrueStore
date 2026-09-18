@@ -1,5 +1,3 @@
-"""Run with: python3 tests/pubsub_test.py /path/to/server"""
-
 import pathlib
 import select
 import socket

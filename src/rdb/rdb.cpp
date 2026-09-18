@@ -104,7 +104,7 @@ private:
   std::size_t pos_ = 0;
 };
 
-} // namespace
+}
 
 std::vector<RdbEntry> load_rdb(const std::string &path) {
   std::ifstream file(path, std::ios::binary);

@@ -36,7 +36,7 @@ const std::string kEmptyRdbHex =
     "524544495330303131fa0972656469732d76657205372e322e30fa0a7265646973"
     "2d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c410"
     "00fa08616f662d62617365c000fff06e3bfec0ff5aa2";
-} // namespace
+}
 
 void Store::init(const Config &config) {
   appendonly_ = config.appendonly;

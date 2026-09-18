@@ -27,7 +27,7 @@ RespType entries_to_resp(
   return RespType::NestedArray(std::move(encoded));
 }
 
-} // namespace
+}
 
 std::string Store::handle_xadd(const std::vector<std::string> &args) {
   if (args.size() < 5 || (args.size() - 3) % 2 != 0) {

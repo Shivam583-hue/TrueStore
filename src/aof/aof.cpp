@@ -59,7 +59,7 @@ read_manifest(const std::filesystem::path &path) {
   }
   return files;
 }
-} // namespace
+}
 
 Aof::~Aof() {
   if (fd_ >= 0) {

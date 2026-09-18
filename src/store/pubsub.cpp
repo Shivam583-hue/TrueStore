@@ -9,7 +9,7 @@ std::string subscription_reply(const std::string &kind, RespType channel,
                                RespType::Integer(static_cast<long long>(count))})
       .to_bytes();
 }
-} // namespace
+}
 
 std::string Store::handle_subscribe(const std::vector<std::string> &args,
                                     ClientState &client) {

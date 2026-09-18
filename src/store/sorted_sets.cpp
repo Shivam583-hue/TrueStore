@@ -53,7 +53,7 @@ std::string format_score(double score) {
   }
   return std::string(buffer, result.ptr);
 }
-} // namespace
+}
 
 bool Store::SortedSet::add(double score, const std::string &member) {
   auto [it, inserted] = scores.try_emplace(member, score);

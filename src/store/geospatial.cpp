@@ -13,7 +13,7 @@
 
 namespace {
 constexpr double kMaxLatitude = 85.05112878;
-constexpr double kCoordinateScale = 67108864; // 2^26 cells per axis.
+constexpr double kCoordinateScale = 67108864;
 constexpr double kEarthRadius = 6372797.560856;
 
 struct Coordinates {
@@ -69,8 +69,6 @@ std::uint64_t encode_coordinates(Coordinates point) {
   const auto latitude = static_cast<std::uint64_t>(
       (point.latitude + kMaxLatitude) / (2 * kMaxLatitude) * kCoordinateScale);
   std::uint64_t score = 0;
-  // Longitude occupies odd bits, latitude even bits. Include the extra bit
-  // produced by coordinates exactly on the inclusive upper boundaries.
   for (unsigned bit = 0; bit <= 26; ++bit) {
     score |= ((longitude >> bit) & 1) << (2 * bit + 1);
     score |= ((latitude >> bit) & 1) << (2 * bit);
@@ -79,7 +77,6 @@ std::uint64_t encode_coordinates(Coordinates point) {
 }
 
 std::optional<Coordinates> decode_coordinates(double score) {
-  // ZADD can put arbitrary scores in the same set; avoid undefined casts.
   if (!std::isfinite(score) || score < 0 || score >= std::ldexp(1.0, 63)) {
     return std::nullopt;
   }
@@ -89,7 +86,6 @@ std::optional<Coordinates> decode_coordinates(double score) {
     longitude |= ((hash >> (2 * bit + 1)) & 1) << bit;
     latitude |= ((hash >> (2 * bit)) & 1) << bit;
   }
-  // Return the center of the encoded cell, not the original input point.
   const double lon_min = -180 + longitude / kCoordinateScale * 360;
   const double lon_max = -180 + (longitude + 1) / kCoordinateScale * 360;
   const double lat_min =
@@ -149,7 +145,7 @@ double distance_in_meters(Coordinates first, Coordinates second) {
       std::cos(lat1) * std::cos(lat2) * sin_lon * sin_lon;
   return 2 * kEarthRadius * std::asin(std::sqrt(std::clamp(haversine, 0.0, 1.0)));
 }
-} // namespace
+}
 
 std::string Store::handle_geoadd(const std::vector<std::string> &args) {
   if (args.size() < 5) {

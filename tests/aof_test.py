@@ -1,5 +1,3 @@
-"""Run with: python3 tests/aof_test.py /path/to/server"""
-
 import pathlib
 import socket
 import subprocess

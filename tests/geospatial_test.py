@@ -1,5 +1,3 @@
-"""Run with: python3 tests/geospatial_test.py /path/to/server"""
-
 import math
 import pathlib
 import tempfile
@@ -60,7 +58,6 @@ class GeospatialTests(unittest.TestCase):
                                       "BYRADIUS", 0, "m"), [member])
 
     def test_encoding_and_decoding_match_redis_across_hemispheres(self):
-        # Scores and decoded coordinates captured from Redis, not a copy of the encoder.
         fixtures = [
             (-122.4194, 37.7749, 1367859919124626, -122.41940170526505, 37.77490001056578),
             (151.2093, -33.8688, 3252046221964352, 151.2092998623848, -33.86880091934156),

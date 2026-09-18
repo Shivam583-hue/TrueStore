@@ -167,7 +167,7 @@ std::string dispatch_command(const std::vector<std::string> &args,
   return RespType::SimpleError("ERR unknown command '" + args[0] + "'")
       .to_bytes();
 }
-} // namespace
+}
 
 std::string handle_command(const std::vector<std::string> &args, Store &store,
                            ClientState &client) {

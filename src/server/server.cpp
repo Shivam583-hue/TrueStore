@@ -35,7 +35,7 @@ struct Waiter {
   std::chrono::steady_clock::time_point deadline;
   long long target_offset = 0;
 };
-} // namespace
+}
 
 Server::Server(Config config)
     : config_(std::move(config)), server_fd_(-1), master_fd_(-1),
