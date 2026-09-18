@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Threads REQUIRED)
 
 add_library(truestore_core STATIC
+  src/aof/aof.cpp
   src/config/config.cpp
   src/server/server.cpp
   src/net/socket.cpp

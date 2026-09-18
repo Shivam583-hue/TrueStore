@@ -10,8 +10,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -19,7 +17,6 @@
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
-#include <system_error>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
@@ -89,29 +86,11 @@ bool Server::start() {
     return false;
   }
 
-  if (config_.appendonly == "yes") {
-    std::filesystem::path aof_dir =
-        std::filesystem::path(config_.dir) / config_.appenddirname;
-
-    std::error_code error;
-    std::filesystem::create_directories(aof_dir, error);
-
-    if (error) {
-      std::cerr << "Failed to create AOF directory: " << error.message()
-                << '\n';
-      return false;
-    }
-
-    std::filesystem::path file_path =
-        aof_dir / (config_.appendfilename + ".1.incr.aof");
-
-    std::ofstream aof_file_;
-    aof_file_.open(file_path, std::ios::out | std::ios::app);
-
-    if (!aof_file_.is_open()) {
-      std::cerr << "Failed to open AOF file: " << file_path << '\n';
-      return false;
-    }
+  try {
+    aof_.open(config_);
+  } catch (const std::exception &e) {
+    std::cerr << "Failed to initialize AOF: " << e.what() << '\n';
+    return false;
   }
   return true;
 }
