@@ -376,7 +376,7 @@ void Server::run() {
 
   auto next_timeout = [&]() {
     const auto now = std::chrono::steady_clock::now();
-    int timeout = -1;
+    int timeout = aof_.sync_timeout_ms();
 
     for (const Waiter &waiter : waiters) {
       if (!waiter.has_deadline) {
@@ -400,6 +400,7 @@ void Server::run() {
   };
 
   while (true) {
+    aof_.sync_if_due();
     int ready = poll(fds, nfds, next_timeout());
 
     if (ready < 0) {
@@ -504,14 +505,22 @@ void Server::run() {
 
                 replica_offset += static_cast<long long>(consumed);
 
+                const bool was_in_multi = clients[fd].in_multi;
+                std::string response;
                 try {
-                  handle_command(args, store, clients[fd]);
+                  response = handle_command(args, store, clients[fd]);
                 } catch (const std::exception &e) {
                   std::cerr << "Command error from master: " << e.what()
                             << '\n';
+                  response = RespType::SimpleError("ERR internal error").to_bytes();
                 }
 
-                store.take_pending_propagations();
+                if (!args.empty() && !was_in_multi &&
+                    is_write_command(to_upper(args[0])) &&
+                    (response.empty() || response[0] != '-')) {
+                  aof_.append(args);
+                }
+                aof_.append_transaction(store.take_pending_propagations());
                 store.take_pending_block();
               }
 
@@ -608,13 +617,15 @@ void Server::run() {
 
                   if (!was_in_multi && is_write_command(command_name) &&
                       (response.empty() || response[0] != '-')) {
+                    aof_.append(args);
                     propagate_to_replicas(args);
                     clients[fd].repl_offset = store.repl_offset();
                   }
                 }
 
-                for (const std::vector<std::string> &queued :
-                     store.take_pending_propagations()) {
+                const auto pending = store.take_pending_propagations();
+                aof_.append_transaction(pending);
+                for (const std::vector<std::string> &queued : pending) {
                   propagate_to_replicas(queued);
                   clients[fd].repl_offset = store.repl_offset();
                 }

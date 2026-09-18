@@ -1,4 +1,5 @@
 #include "aof/aof.hpp"
+#include "resp/resp.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -70,6 +71,12 @@ void Aof::open(const Config &config) {
     return;
   }
 
+  fsync_ = config.appendfsync;
+  if (fsync_ != "always" && fsync_ != "everysec" && fsync_ != "no") {
+    throw std::runtime_error("Invalid appendfsync option: " + fsync_);
+  }
+  last_sync_ = std::chrono::steady_clock::now();
+
   const auto directory =
       std::filesystem::path(config.dir) / config.appenddirname;
   std::filesystem::create_directories(directory);
@@ -106,4 +113,72 @@ void Aof::open(const Config &config) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to open incremental AOF file");
   }
+}
+
+void Aof::append(const std::vector<std::string> &args) {
+  if (fd_ >= 0) {
+    write(RespType::Array(args).to_bytes());
+  }
+}
+
+void Aof::append_transaction(
+    const std::vector<std::vector<std::string>> &commands) {
+  if (fd_ < 0 || commands.empty()) {
+    return;
+  }
+
+  std::string bytes = RespType::Array({"MULTI"}).to_bytes();
+  for (const auto &args : commands) {
+    bytes += RespType::Array(args).to_bytes();
+  }
+  bytes += RespType::Array({"EXEC"}).to_bytes();
+  write(bytes);
+}
+
+void Aof::write(const std::string &bytes) {
+  std::size_t offset = 0;
+  while (offset < bytes.size()) {
+    const auto written = ::write(fd_, bytes.data() + offset, bytes.size() - offset);
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      throw std::system_error(errno, std::generic_category(),
+                              "Failed to write AOF");
+    }
+    if (written == 0) {
+      throw std::runtime_error("Failed to complete AOF write");
+    }
+    offset += static_cast<std::size_t>(written);
+  }
+  dirty_ = true;
+  sync_if_due();
+}
+
+void Aof::sync_if_due() {
+  if (!dirty_ || fsync_ == "no") {
+    return;
+  }
+  if (fsync_ == "everysec" &&
+      std::chrono::steady_clock::now() - last_sync_ < std::chrono::seconds(1)) {
+    return;
+  }
+
+  while (::fsync(fd_) < 0) {
+    if (errno != EINTR) {
+      throw std::system_error(errno, std::generic_category(),
+                              "Failed to sync AOF");
+    }
+  }
+  dirty_ = false;
+  last_sync_ = std::chrono::steady_clock::now();
+}
+
+int Aof::sync_timeout_ms() const {
+  if (!dirty_ || fsync_ != "everysec") {
+    return -1;
+  }
+  const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(
+      last_sync_ + std::chrono::seconds(1) - std::chrono::steady_clock::now());
+  return remaining.count() > 0 ? static_cast<int>(remaining.count()) : 0;
 }
