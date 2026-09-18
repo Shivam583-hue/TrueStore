@@ -47,6 +47,10 @@ std::string Store::handle_keys(const std::vector<std::string> &args) {
     candidates.push_back(key);
   }
 
+  for (const auto &[key, set] : sorted_sets_) {
+    candidates.push_back(key);
+  }
+
   std::vector<std::string> matched;
 
   for (const std::string &key : candidates) {
@@ -101,19 +105,25 @@ std::optional<BlockRequest> Store::take_pending_block() {
 std::string Store::handle_type(const std::vector<std::string> &args) {
   if (args.size() != 2) {
     return RespType::SimpleError(
-               "ERR wrong number of arguments for 'lrange' command")
+               "ERR wrong number of arguments for 'type' command")
         .to_bytes();
   }
 
-  const std::string &key = args[1];
+  return RespType::SimpleString(key_type(args[1])).to_bytes();
+}
 
-  if (Streams.find(key) != Streams.end()) {
-    return RespType::SimpleString("stream").to_bytes();
+std::string Store::key_type(const std::string &key) {
+  if (is_expired(key)) {
+    return "none";
   }
-
-  if (Storage.find(key) == Storage.end()) {
-    return RespType::SimpleString("none").to_bytes();
+  if (Storage.contains(key)) {
+    return "string";
   }
-
-  return RespType::SimpleString("string").to_bytes();
+  if (DynamicVector.contains(key)) {
+    return "list";
+  }
+  if (Streams.contains(key)) {
+    return "stream";
+  }
+  return sorted_sets_.contains(key) ? "zset" : "none";
 }

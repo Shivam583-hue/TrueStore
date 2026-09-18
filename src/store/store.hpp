@@ -31,12 +31,18 @@ struct BlockRequest {
 };
 
 class Store {
+  struct SortedSet {
+    std::unordered_map<std::string, double> scores;
+    std::set<std::pair<double, std::string>> ordered;
+  };
+
   std::map<std::string, std::string> Storage;
   std::map<std::string, std::chrono::steady_clock::time_point> Expirations;
   std::unordered_map<std::string, std::vector<std::string>> DynamicVector;
   std::optional<BlockRequest> pending_block_;
   std::vector<std::vector<std::string>> pending_propagations_;
   std::unordered_map<std::string, Stream> Streams;
+  std::unordered_map<std::string, SortedSet> sorted_sets_;
   std::unordered_map<std::string, std::set<int>> subscribers_;
   std::vector<std::pair<int, std::string>> pending_messages_;
 
@@ -53,6 +59,8 @@ class Store {
   std::string appenddirname_;
   std::string appendfilename_;
   std::string appendfsync_;
+
+  bool wrong_sorted_set_type(const std::string &key);
 
 public:
   void init(const Config &config);
@@ -84,6 +92,7 @@ public:
   std::string handle_lpop(const std::vector<std::string> &args);
   std::string handle_blpop(const std::vector<std::string> &args);
   std::string handle_type(const std::vector<std::string> &args);
+  std::string key_type(const std::string &key);
   std::string handle_keys(const std::vector<std::string> &args);
   std::string handle_xadd(const std::vector<std::string> &args);
   std::string handle_xrange(const std::vector<std::string> &args);
@@ -91,6 +100,12 @@ public:
   std::string handle_incr(const std::vector<std::string> &args);
   std::string handle_config_get(const std::vector<std::string> &args);
   std::string handle_info(const std::vector<std::string> &args);
+  std::string handle_zadd(const std::vector<std::string> &args);
+  std::string handle_zrank(const std::vector<std::string> &args);
+  std::string handle_zrange(const std::vector<std::string> &args);
+  std::string handle_zcard(const std::vector<std::string> &args);
+  std::string handle_zscore(const std::vector<std::string> &args);
+  std::string handle_zrem(const std::vector<std::string> &args);
   std::string handle_subscribe(const std::vector<std::string> &args,
                                ClientState &client);
   std::string handle_unsubscribe(const std::vector<std::string> &args,

@@ -58,6 +58,34 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "PUBLISH")
     return store.handle_publish(args);
 
+  if (command == "ZADD")
+    return store.handle_zadd(args);
+
+  if (command == "ZRANK")
+    return store.handle_zrank(args);
+
+  if (command == "ZRANGE")
+    return store.handle_zrange(args);
+
+  if (command == "ZCARD")
+    return store.handle_zcard(args);
+
+  if (command == "ZSCORE")
+    return store.handle_zscore(args);
+
+  if (command == "ZREM")
+    return store.handle_zrem(args);
+
+  static const std::unordered_set<std::string> incompatible_with_sorted_set = {
+      "GET", "INCR", "RPUSH", "LPUSH", "LLEN", "LRANGE", "LPOP",
+      "XADD", "XRANGE"};
+  if (args.size() >= 2 && incompatible_with_sorted_set.contains(command) &&
+      store.key_type(args[1]) == "zset") {
+    return RespType::SimpleError(
+               "WRONGTYPE Operation against a key holding the wrong kind of value")
+        .to_bytes();
+  }
+
   if (command == "ECHO") {
     if (args.size() != 2) {
       return RespType::SimpleError(

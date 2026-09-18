@@ -176,6 +176,14 @@ std::string Store::handle_blpop(const std::vector<std::string> &args) {
 
   const std::vector<std::string> keys(args.begin() + 1, args.end() - 1);
 
+  for (const auto &key : keys) {
+    if (sorted_sets_.contains(key)) {
+      return RespType::SimpleError(
+                 "WRONGTYPE Operation against a key holding the wrong kind of value")
+          .to_bytes();
+    }
+  }
+
   auto popped = try_blpop(keys);
 
   if (popped) {

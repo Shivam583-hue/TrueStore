@@ -242,6 +242,12 @@ std::string Store::handle_xread(const std::vector<std::string> &args) {
     const std::string &key = args[i + n];
     const std::string &id_text = args[i + total + n];
 
+    if (sorted_sets_.contains(key)) {
+      return RespType::SimpleError(
+                 "WRONGTYPE Operation against a key holding the wrong kind of value")
+          .to_bytes();
+    }
+
     StreamID id{};
 
     if (id_text == "$") {

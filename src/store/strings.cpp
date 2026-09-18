@@ -13,9 +13,15 @@ std::string Store::handle_set(const std::vector<std::string> &args) {
   const std::string &key = args[1];
   const std::string &value = args[2];
 
-  Storage[key] = value;
+  auto assign = [&]() {
+    Storage[key] = value;
+    sorted_sets_.erase(key);
+    DynamicVector.erase(key);
+    Streams.erase(key);
+  };
 
   if (args.size() == 3) {
+    assign();
     Expirations.erase(key);
 
     return RespType::SimpleString("OK").to_bytes();
@@ -49,6 +55,7 @@ std::string Store::handle_set(const std::vector<std::string> &args) {
     return RespType::SimpleError("ERR syntax error").to_bytes();
   }
 
+  assign();
   return RespType::SimpleString("OK").to_bytes();
 }
 
