@@ -43,7 +43,8 @@ class PubSubTests(unittest.TestCase):
         client = self.client()
         client.command("SUBSCRIBE", "foo")
         for args in (("SET", "key", "v"), ("GET", "key"), ("ECHO", "hi"),
-                     ("PUBLISH", "foo", "hi"), ("MULTI",), ("UNKNOWN",)):
+                     ("PUBLISH", "foo", "hi"), ("MULTI",), ("UNKNOWN",),
+                     ("REPLCONF", "ACK", 0), ("PSYNC", "?", -1)):
             with self.subTest(args=args):
                 reply = client.command(*args)
                 self.assertIsInstance(reply, ErrorReply)
@@ -51,6 +52,8 @@ class PubSubTests(unittest.TestCase):
                     b"err can't execute '" + args[0].lower().encode() + b"'"
                 ))
         self.assertIsNone(self.server.command("GET", "key"))
+        self.assertEqual(self.server.command("SET", "normal", "value"), b"OK")
+        self.assertEqual(client.command("PING"), [b"pong", b""])
 
     def test_ping_depends_on_the_calling_clients_mode(self):
         client = self.client()

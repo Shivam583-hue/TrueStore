@@ -610,7 +610,8 @@ void Server::run() {
 
                 buffers[fd].erase(0, consumed);
 
-                if (!args.empty() && to_upper(args[0]) == "REPLCONF" &&
+                if (clients[fd].subscriptions.empty() && !args.empty() &&
+                    to_upper(args[0]) == "REPLCONF" &&
                     args.size() >= 3 && to_upper(args[1]) == "ACK") {
                   auto it = replicas.find(fd);
 
@@ -639,7 +640,8 @@ void Server::run() {
                 if (!args.empty()) {
                   std::string command_name = to_upper(args[0]);
 
-                  if (command_name == "PSYNC") {
+                  if (command_name == "PSYNC" && !was_in_multi &&
+                      !response.empty() && response[0] != '-') {
                     replicas.emplace(fd, store.repl_offset());
                   }
 
