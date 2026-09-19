@@ -76,6 +76,8 @@ public:
     return default_user_enabled_ && default_user_nopass_;
   }
   std::string handle_acl(const std::vector<std::string> &args);
+  std::string handle_auth(const std::vector<std::string> &args,
+                          ClientState &client);
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);

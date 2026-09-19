@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <stdexcept>
 
@@ -109,5 +110,30 @@ std::string Store::handle_acl(const std::vector<std::string> &args) {
   default_user_enabled_ = enabled;
   default_user_nopass_ = nopass;
   default_user_passwords_ = std::move(passwords);
+  return RespType::SimpleString("OK").to_bytes();
+}
+
+std::string Store::handle_auth(const std::vector<std::string> &args,
+                              ClientState &client) {
+  if (args.size() != 2 && args.size() != 3) {
+    return arity_error("auth");
+  }
+  if (args.size() == 2 && default_user_nopass_) {
+    return RespType::SimpleError(
+        "ERR AUTH <password> called without any password configured for the "
+        "default user. Are you sure your configuration is correct?").to_bytes();
+  }
+  bool matched = default_user_nopass_;
+  const auto hash = password_hash(args.back());
+  for (const auto &password : default_user_passwords_) {
+    matched |= CRYPTO_memcmp(hash.data(), password.data(), hash.size()) == 0;
+  }
+  if (!default_user_enabled_ || (args.size() == 3 && args[1] != "default") ||
+      !matched) {
+    return RespType::SimpleError(
+        "WRONGPASS invalid username-password pair or user is disabled.")
+        .to_bytes();
+  }
+  client.authenticated = true;
   return RespType::SimpleString("OK").to_bytes();
 }

@@ -272,6 +272,9 @@ void Server::run() {
 
   std::unordered_map<int, std::string> buffers;
   std::unordered_map<int, ClientState> clients;
+  if (master_fd_ >= 0) {
+    clients[master_fd_].authenticated = true;
+  }
 
   std::vector<Waiter> waiters;
   std::unordered_map<int, long long> replicas;
@@ -472,6 +475,7 @@ void Server::run() {
             fds[nfds].fd = client_fd;
             fds[nfds].events = POLLIN;
             clients[client_fd].fd = client_fd;
+            clients[client_fd].authenticated = store.default_user_auto_auth();
             ++nfds;
           }
         }
@@ -610,7 +614,8 @@ void Server::run() {
 
                 buffers[fd].erase(0, consumed);
 
-                if (clients[fd].subscriptions.empty() && !args.empty() &&
+                if ((clients[fd].authenticated || store.default_user_auto_auth()) &&
+                    clients[fd].subscriptions.empty() && !args.empty() &&
                     to_upper(args[0]) == "REPLCONF" &&
                     args.size() >= 3 && to_upper(args[1]) == "ACK") {
                   auto it = replicas.find(fd);

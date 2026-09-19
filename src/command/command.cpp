@@ -39,6 +39,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "ACL")
     return store.handle_acl(args);
 
+  if (command == "AUTH")
+    return store.handle_auth(args, client);
+
   if (command == "PING") {
     if (args.size() > 2) {
       return RespType::SimpleError(
@@ -180,6 +183,11 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
 
   std::string command = to_upper(args[0]);
 
+  if (!client.authenticated && !store.default_user_auto_auth() &&
+      command != "AUTH" && command != "QUIT" && command != "RESET") {
+    return RespType::SimpleError("NOAUTH Authentication required.").to_bytes();
+  }
+
   if (!client.subscriptions.empty()) {
     static const std::unordered_set<std::string> allowed = {
         "SUBSCRIBE", "UNSUBSCRIBE", "PSUBSCRIBE", "PUNSUBSCRIBE",
@@ -203,6 +211,7 @@ std::string handle_command(const std::vector<std::string> &args, Store &store,
     client.in_multi = false;
     client.queued.clear();
     client.watched.clear();
+    client.authenticated = store.default_user_auto_auth();
     client.close_after_reply = command == "QUIT";
     return RespType::SimpleString(command == "QUIT" ? "OK" : "RESET").to_bytes();
   }

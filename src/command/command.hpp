@@ -10,6 +10,7 @@
 
 struct ClientState {
   int fd = -1;
+  bool authenticated = false;
   std::set<std::string> subscriptions;
   bool close_after_reply = false;
   bool in_multi = false;

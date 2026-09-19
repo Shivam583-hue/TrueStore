@@ -118,6 +118,7 @@ void Aof::open(const Config &config) {
 
 void Aof::replay(Store &store) const {
   ClientState client;
+  client.authenticated = true;
   for (const auto &file : files_) {
     std::ifstream input(file, std::ios::binary);
     if (!input) {
