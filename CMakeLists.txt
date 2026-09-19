@@ -21,7 +21,7 @@ add_library(truestore_core STATIC
   src/store/lists.cpp
   src/store/streams.cpp
   src/store/replication.cpp
-  src/store/config.cpp
+  src/store/config_commands.cpp
   src/store/pubsub.cpp
   src/store/sorted_sets.cpp
   src/store/geospatial.cpp
