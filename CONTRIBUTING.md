@@ -1,6 +1,7 @@
 # Contributing to TrueStore
 
 Bug reports, fixes, command implementations, and documentation improvements are welcome.
+Please follow the [code of conduct](CODE_OF_CONDUCT.md) in project spaces.
 For larger changes, describe the problem and proposed behavior in an issue so others can
 discuss the approach before implementation.
 
@@ -9,7 +10,7 @@ discuss the approach before implementation.
 Develop on Linux or macOS with these dependencies installed:
 
 - A C++23 compiler and a C compiler for the vendored Rax library.
-- CMake 3.13 or newer.
+- CMake 3.20 or newer for C++23 support.
 - OpenSSL Crypto libraries and development headers.
 - Python 3 for the integration tests.
 
