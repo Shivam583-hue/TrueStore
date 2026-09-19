@@ -161,8 +161,14 @@ class BitmapTests(unittest.TestCase):
             start, end = rng.randrange(-600, 600), rng.randrange(-600, 600)
             left = max(0, start + len(bits) if start < 0 else start)
             right = max(0, end + len(bits) if end < 0 else end)
-            expected = bits[left:right + 1].count("1")
+            expected = 0 if start < 0 and end < 0 and start > end else bits[left:right + 1].count("1")
             self.assertEqual(self.command("BITCOUNT", "bits", start, end, "BIT"), expected)
+
+    def test_reversed_negative_count_ranges_remain_empty_before_clamping(self):
+        self.command("SET", "bits", b"\xff")
+        for unit, first in (("BYTE", 8), ("BIT", 1)):
+            self.assertEqual(self.command("BITCOUNT", "bits", -419, -809, unit), 0)
+            self.assertEqual(self.command("BITCOUNT", "bits", -419, -419, unit), first)
 
     def test_bitop_combines_unequal_lengths_and_preserves_binary_bytes(self):
         self.command("SET", "left", b"\xf0\x0f")

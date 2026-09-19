@@ -112,7 +112,7 @@ std::string Store::handle_bitcount(const std::vector<std::string> &args) {
     return wrong_type();
   }
   const auto value = Storage.find(args[1]);
-  if (value == Storage.end()) {
+  if (value == Storage.end() || (start < 0 && end < 0 && start > end)) {
     return RespType::Integer(0).to_bytes();
   }
   const auto length = static_cast<long long>(value->second.size()) *
