@@ -100,6 +100,8 @@ public:
   std::string handle_get(const std::vector<std::string> &args);
   std::string handle_setbit(const std::vector<std::string> &args);
   std::string handle_getbit(const std::vector<std::string> &args);
+  std::string handle_bitcount(const std::vector<std::string> &args);
+  std::string handle_bitop(const std::vector<std::string> &args);
   bool is_expired(const std::string &key);
   std::string handle_rpush(const std::vector<std::string> &args);
   std::string handle_lrange(const std::vector<std::string> &args);

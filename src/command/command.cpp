@@ -26,7 +26,7 @@ bool is_write_command(const std::string &command) {
       "RPUSHX",  "LPUSHX",   "LPOP",      "RPOP",    "LSET",        "LREM",
       "LTRIM",   "LINSERT",  "XADD",      "XDEL",    "XTRIM",       "SADD",
       "SREM",    "HSET",     "HDEL",      "ZADD",    "ZREM",        "RENAME",
-      "COPY",    "FLUSHALL", "FLUSHDB",   "GEOADD",  "SETBIT"};
+      "COPY",    "FLUSHALL", "FLUSHDB",   "GEOADD",  "SETBIT",      "BITOP"};
 
   return write_commands.count(command) > 0;
 }
@@ -124,6 +124,12 @@ std::string dispatch_command(const std::vector<std::string> &args,
 
   if (command == "GETBIT")
     return store.handle_getbit(args);
+
+  if (command == "BITCOUNT")
+    return store.handle_bitcount(args);
+
+  if (command == "BITOP")
+    return store.handle_bitop(args);
 
   if (command == "RPUSH")
     return store.handle_rpush(args);
