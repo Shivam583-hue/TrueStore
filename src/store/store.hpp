@@ -66,6 +66,7 @@ class Store {
   std::string appendfilename_;
   std::string appendfsync_;
 
+  void init_replication(const Config &config);
   bool wrong_sorted_set_type(const std::string &key);
   bool wrong_string_type(const std::string &key);
 

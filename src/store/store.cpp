@@ -3,6 +3,16 @@
 
 #include <fnmatch.h>
 
+void Store::init(const Config &config) {
+  dir_ = config.dir;
+  dbfilename_ = config.dbfilename;
+  appendonly_ = config.appendonly;
+  appenddirname_ = config.appenddirname;
+  appendfilename_ = config.appendfilename;
+  appendfsync_ = config.appendfsync;
+  init_replication(config);
+}
+
 void Store::load_entries(const std::vector<RdbEntry> &entries) {
   const auto system_now = std::chrono::system_clock::now();
   const auto steady_now = std::chrono::steady_clock::now();

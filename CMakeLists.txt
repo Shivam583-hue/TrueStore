@@ -11,6 +11,9 @@ find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 add_library(truestore_core STATIC
   src/aof/aof.cpp
+  src/auth/auth.cpp
+  src/pubsub/pubsub.cpp
+  src/replication/replication.cpp
   src/config/config.cpp
   src/server/server.cpp
   src/net/socket.cpp
@@ -20,12 +23,9 @@ add_library(truestore_core STATIC
   src/store/strings.cpp
   src/store/lists.cpp
   src/store/streams.cpp
-  src/store/replication.cpp
   src/store/config_commands.cpp
-  src/store/pubsub.cpp
   src/store/sorted_sets.cpp
   src/store/geospatial.cpp
-  src/store/auth.cpp
   src/store/bitmaps.cpp
   src/command/command.cpp
   src/stream/stream.cpp

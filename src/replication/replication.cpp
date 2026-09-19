@@ -38,17 +38,10 @@ const std::string kEmptyRdbHex =
     "00fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 }
 
-void Store::init(const Config &config) {
-  appendonly_ = config.appendonly;
-  appenddirname_ = config.appenddirname;
-  appendfilename_ = config.appendfilename;
-  appendfsync_ = config.appendfsync;
-
+void Store::init_replication(const Config &config) {
   is_replica_ = config.is_replica;
   master_host_ = config.master_host;
   master_port_ = config.master_port;
-  dir_ = config.dir;
-  dbfilename_ = config.dbfilename;
   master_replid_ = generate_replid();
   master_repl_offset_ = 0;
 }
