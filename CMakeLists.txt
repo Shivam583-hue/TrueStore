@@ -26,6 +26,7 @@ add_library(truestore_core STATIC
   src/store/sorted_sets.cpp
   src/store/geospatial.cpp
   src/store/auth.cpp
+  src/store/bitmaps.cpp
   src/command/command.cpp
   src/stream/stream.cpp
   third_party/rax/rax.c

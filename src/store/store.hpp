@@ -67,6 +67,7 @@ class Store {
   std::string appendfsync_;
 
   bool wrong_sorted_set_type(const std::string &key);
+  bool wrong_string_type(const std::string &key);
 
 public:
   void init(const Config &config);
@@ -97,6 +98,8 @@ public:
 
   std::string handle_set(const std::vector<std::string> &args);
   std::string handle_get(const std::vector<std::string> &args);
+  std::string handle_setbit(const std::vector<std::string> &args);
+  std::string handle_getbit(const std::vector<std::string> &args);
   bool is_expired(const std::string &key);
   std::string handle_rpush(const std::vector<std::string> &args);
   std::string handle_lrange(const std::vector<std::string> &args);
