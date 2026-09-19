@@ -36,6 +36,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
                              Store &store, ClientState &client) {
   std::string command = to_upper(args[0]);
 
+  if (command == "ACL")
+    return store.handle_acl(args);
+
   if (command == "PING") {
     if (args.size() > 2) {
       return RespType::SimpleError(

@@ -48,6 +48,10 @@ class Store {
   std::unordered_map<std::string, std::set<int>> subscribers_;
   std::vector<std::pair<int, std::string>> pending_messages_;
 
+  bool default_user_enabled_ = true;
+  bool default_user_nopass_ = true;
+  std::vector<std::string> default_user_passwords_;
+
   bool is_replica_ = false;
   std::string master_host_;
   int master_port_ = 0;
@@ -67,6 +71,11 @@ class Store {
 public:
   void init(const Config &config);
   void load_entries(const std::vector<RdbEntry> &entries);
+
+  bool default_user_auto_auth() const {
+    return default_user_enabled_ && default_user_nopass_;
+  }
+  std::string handle_acl(const std::vector<std::string> &args);
 
   std::string handle_replconf(const std::vector<std::string> &args);
   std::string handle_psync(const std::vector<std::string> &args);

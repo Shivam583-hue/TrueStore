@@ -7,6 +7,7 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 add_library(truestore_core STATIC
   src/aof/aof.cpp
@@ -24,12 +25,13 @@ add_library(truestore_core STATIC
   src/store/pubsub.cpp
   src/store/sorted_sets.cpp
   src/store/geospatial.cpp
+  src/store/auth.cpp
   src/command/command.cpp
   src/stream/stream.cpp
   third_party/rax/rax.c
 )
 target_include_directories(truestore_core PUBLIC src third_party)
-target_link_libraries(truestore_core PUBLIC Threads::Threads)
+target_link_libraries(truestore_core PUBLIC Threads::Threads OpenSSL::Crypto)
 
 add_executable(server src/main.cpp)
 target_link_libraries(server PRIVATE truestore_core)
