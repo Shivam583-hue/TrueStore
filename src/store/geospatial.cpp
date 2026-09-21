@@ -1,10 +1,10 @@
-#include "store/store.hpp"
 #include "command/command.hpp"
 #include "resp/resp.hpp"
+#include "store/store.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <iterator>
@@ -30,8 +30,8 @@ std::string arity_error(const std::string &command) {
 }
 
 std::string wrong_type() {
-  return RespType::SimpleError(
-             "WRONGTYPE Operation against a key holding the wrong kind of value")
+  return RespType::SimpleError("WRONGTYPE Operation against a key holding the "
+                               "wrong kind of value")
       .to_bytes();
 }
 
@@ -64,8 +64,8 @@ std::string parse_coordinates(const std::string &longitude,
 }
 
 std::uint64_t encode_coordinates(Coordinates point) {
-  const auto longitude = static_cast<std::uint64_t>(
-      (point.longitude + 180) / 360 * kCoordinateScale);
+  const auto longitude = static_cast<std::uint64_t>((point.longitude + 180) /
+                                                    360 * kCoordinateScale);
   const auto latitude = static_cast<std::uint64_t>(
       (point.latitude + kMaxLatitude) / (2 * kMaxLatitude) * kCoordinateScale);
   std::uint64_t score = 0;
@@ -92,17 +92,17 @@ std::optional<Coordinates> decode_coordinates(double score) {
       -kMaxLatitude + latitude / kCoordinateScale * (2 * kMaxLatitude);
   const double lat_max =
       -kMaxLatitude + (latitude + 1) / kCoordinateScale * (2 * kMaxLatitude);
-  return Coordinates{std::clamp((lon_min + lon_max) / 2, -180.0, 180.0),
-                     std::clamp((lat_min + lat_max) / 2,
-                                -kMaxLatitude, kMaxLatitude)};
+  return Coordinates{
+      std::clamp((lon_min + lon_max) / 2, -180.0, 180.0),
+      std::clamp((lat_min + lat_max) / 2, -kMaxLatitude, kMaxLatitude)};
 }
 
 std::string format_number(double value, bool distance = false) {
   char buffer[128];
-  const auto result = distance
-      ? std::to_chars(std::begin(buffer), std::end(buffer), value,
-                      std::chars_format::fixed, 4)
-      : std::to_chars(std::begin(buffer), std::end(buffer), value);
+  const auto result =
+      distance ? std::to_chars(std::begin(buffer), std::end(buffer), value,
+                               std::chars_format::fixed, 4)
+               : std::to_chars(std::begin(buffer), std::end(buffer), value);
   if (result.ec != std::errc{}) {
     throw std::runtime_error("Failed to format geospatial number");
   }
@@ -110,8 +110,8 @@ std::string format_number(double value, bool distance = false) {
 }
 
 RespType coordinates_reply(Coordinates point) {
-  return RespType::Array({format_number(point.longitude),
-                          format_number(point.latitude)});
+  return RespType::Array(
+      {format_number(point.longitude), format_number(point.latitude)});
 }
 
 double unit_in_meters(const std::string &unit) {
@@ -139,11 +139,14 @@ double distance_in_meters(Coordinates first, Coordinates second) {
   constexpr double radians = std::numbers::pi / 180;
   const double lat1 = first.latitude * radians;
   const double lat2 = second.latitude * radians;
-  const double sin_lat = std::sin((second.latitude - first.latitude) * radians / 2);
-  const double sin_lon = std::sin((second.longitude - first.longitude) * radians / 2);
-  const double haversine = sin_lat * sin_lat +
-      std::cos(lat1) * std::cos(lat2) * sin_lon * sin_lon;
-  return 2 * kEarthRadius * std::asin(std::sqrt(std::clamp(haversine, 0.0, 1.0)));
+  const double sin_lat =
+      std::sin((second.latitude - first.latitude) * radians / 2);
+  const double sin_lon =
+      std::sin((second.longitude - first.longitude) * radians / 2);
+  const double haversine =
+      sin_lat * sin_lat + std::cos(lat1) * std::cos(lat2) * sin_lon * sin_lon;
+  return 2 * kEarthRadius *
+         std::asin(std::sqrt(std::clamp(haversine, 0.0, 1.0)));
 }
 }
 
@@ -219,7 +222,8 @@ std::string Store::handle_geopos(const std::vector<std::string> &args) {
         point = decode_coordinates(member->second);
       }
     }
-    positions.push_back(point ? coordinates_reply(*point) : RespType::NullArray());
+    positions.push_back(point ? coordinates_reply(*point)
+                              : RespType::NullArray());
   }
   return RespType::NestedArray(std::move(positions)).to_bytes();
 }
@@ -250,7 +254,8 @@ std::string Store::handle_geodist(const std::vector<std::string> &args) {
     return RespType::NullBulkString().to_bytes();
   }
   return RespType::BulkString(
-      format_number(distance_in_meters(*from, *to) / unit, true)).to_bytes();
+             format_number(distance_in_meters(*from, *to) / unit, true))
+      .to_bytes();
 }
 
 std::string Store::handle_geosearch(const std::vector<std::string> &args) {
@@ -369,11 +374,10 @@ std::string Store::handle_geosearch(const std::vector<std::string> &args) {
     sort = 1;
   }
   if (sort) {
-    std::stable_sort(matches.begin(), matches.end(),
-                     [sort](const Match &a, const Match &b) {
-                       return sort > 0 ? a.distance < b.distance
-                                       : a.distance > b.distance;
-                     });
+    std::stable_sort(
+        matches.begin(), matches.end(), [sort](const Match &a, const Match &b) {
+          return sort > 0 ? a.distance < b.distance : a.distance > b.distance;
+        });
   }
   if (count && matches.size() > static_cast<std::size_t>(count)) {
     matches.resize(static_cast<std::size_t>(count));
@@ -387,7 +391,8 @@ std::string Store::handle_geosearch(const std::vector<std::string> &args) {
     }
     std::vector<RespType> details{RespType::BulkString(match.member)};
     if (with_dist) {
-      details.push_back(RespType::BulkString(format_number(match.distance, true)));
+      details.push_back(
+          RespType::BulkString(format_number(match.distance, true)));
     }
     if (with_hash) {
       details.push_back(RespType::Integer(static_cast<long long>(match.score)));
