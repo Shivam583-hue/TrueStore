@@ -119,6 +119,9 @@ std::string dispatch_command(const std::vector<std::string> &args,
   if (command == "GET")
     return store.handle_get(args);
 
+  if (command == "STRLEN")
+    return store.handle_strlen(args);
+
   if (command == "SETBIT")
     return store.handle_setbit(args);
 

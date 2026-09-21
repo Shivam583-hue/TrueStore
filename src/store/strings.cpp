@@ -81,6 +81,23 @@ std::string Store::handle_get(const std::vector<std::string> &args) {
   return RespType::BulkString(it->second).to_bytes();
 }
 
+std::string Store::handle_strlen(const std::vector<std::string> &args) {
+  if (args.size() != 2) {
+    return RespType::SimpleError(
+               "ERR wrong number of arguments for 'strlen' command")
+        .to_bytes();
+  }
+
+  if (wrong_string_type(args[1])) {
+    return RespType::SimpleError(
+               "WRONGTYPE Operation against a key holding the wrong kind of value")
+        .to_bytes();
+  }
+
+  const auto it = Storage.find(args[1]);
+  return RespType::Integer(it == Storage.end() ? 0 : it->second.size()).to_bytes();
+}
+
 std::string Store::handle_incr(const std::vector<std::string> &args) {
   if (args.size() != 2) {
     return RespType::SimpleError(

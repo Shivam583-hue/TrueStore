@@ -99,6 +99,7 @@ public:
 
   std::string handle_set(const std::vector<std::string> &args);
   std::string handle_get(const std::vector<std::string> &args);
+  std::string handle_strlen(const std::vector<std::string> &args);
   std::string handle_setbit(const std::vector<std::string> &args);
   std::string handle_getbit(const std::vector<std::string> &args);
   std::string handle_bitcount(const std::vector<std::string> &args);
