@@ -2,11 +2,13 @@
 
 TrueStore is a C++23 in-memory data store implementing a subset of Redis commands over RESP, with replication, append-only persistence, and specialized data structures.
 
-![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-lightgrey)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Source LOC: 4,695](https://img.shields.io/badge/source_LOC-4,695-blue)](#project-structure)
-[![Tests: 104 passing](https://img.shields.io/badge/tests-104_passing-brightgreen)](#testing)
+<p align="center">
+  <img src="https://img.shields.io/badge/C%2B%2B-23-blue" alt="C++23">
+  <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux | macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+  <a href="#project-structure"><img src="https://img.shields.io/badge/source_LOC-4,695-blue" alt="Source LOC: 4,695"></a>
+  <a href="#testing"><img src="https://img.shields.io/badge/tests-104_passing-brightgreen" alt="Tests: 104 passing"></a>
+</p>
 
 <!-- Demo / terminal GIF: -->
 
