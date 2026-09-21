@@ -35,7 +35,9 @@ Compatibility means that the implemented commands use Redis command names and RE
 - **Specialized structures:** bitmap operations on strings and geospatial coordinates encoded as sorted-set scores.
 
 ## Architecture
+
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/677fc5d7-9f45-4b2a-a70e-76325baf0542" />
+
 ## How It Works
 
 ### Networking and RESP
