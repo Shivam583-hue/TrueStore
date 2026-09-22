@@ -10,7 +10,11 @@ TrueStore is a C++23 in-memory data store implementing a subset of Redis command
   <a href="#testing"><img src="https://img.shields.io/badge/tests-104_passing-brightgreen" alt="Tests: 104 passing"></a>
 </p>
 
-<!-- Demo / terminal GIF: -->
+<p align="center">
+  <img src="docs/demo.gif" width="960" alt="TrueStore terminal demo: connect with redis-cli, store strings, grow and count bitmap bits, execute a transaction, and publish a message to a subscriber.">
+</p>
+
+Recorded against a local TrueStore server with real `redis-cli` responses. [Demo transcript and regeneration instructions](docs/demo.md).
 
 ## Overview
 
